@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="LiveSync.API/LiveSync.API.csproj" />
+  <Project Path="LiveSync.Application/LiveSync.Application.csproj" />
+  <Project Path="LiveSync.Domain/LiveSync.Domain.csproj" />
+  <Project Path="LiveSync.Infrastructure/LiveSync.Infrastructure.csproj" />
+  <Project Path="LiveSync.Worker/LiveSync.Worker.csproj" />
+</Solution>
