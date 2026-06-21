@@ -2,6 +2,7 @@
 using LiveSync.Application.RealTimeSync.Ports;
 using LiveSync.Application.RealTimeSync.ReadModels;
 using LiveSync.Domain.Enums;
+using LiveSync.Domain.Serialization;
 using LiveSync.Domain.ValueObjects;
 using LiveSync.Infrastructure.Redis;
 using StackExchange.Redis;
@@ -23,7 +24,9 @@ public sealed class RedisSubscriptionStore(IRedisConnectionFactory redis) : ISub
         await db.StringSetAsync(RedisKeyBuilder.Subscription(subscription.TenantId, subscription.Id), json);
         await db.SetAddAsync(RedisKeyBuilder.ConnectionSubscriptions(subscription.TenantId, subscription.ConnectionId), subscription.Id);
         await db.SetAddAsync(RedisKeyBuilder.TopicSubscriptions(subscription.TenantId, subscription.Topic.Hash), subscription.Id);
-        await db.SetAddAsync(RedisKeyBuilder.BucketTopics(subscription.TenantId, subscription.Topic.Bucket), subscription.Topic.Key);
+        await db.SetAddAsync(
+            RedisKeyBuilder.BucketTopics(subscription.TenantId, subscription.Topic.Bucket),
+            TopicSerializer.Serialize(subscription.Topic));
 
         await db.SortedSetAddAsync(
             RedisKeyBuilder.SubscriptionRenewalIndex(),
@@ -95,20 +98,7 @@ public sealed class RedisSubscriptionStore(IRedisConnectionFactory redis) : ISub
         var topics = new List<Topic>();
 
         foreach (var topicKey in topicKeys)
-        {
-            // topic key format: tenantId#1:filter#item.parentId == 5:bucket#Item
-            var text = topicKey.ToString();
-            var parts = text.Split(':');
-            var map = parts
-                .Select(p => p.Split('#', 2))
-                .Where(p => p.Length == 2)
-                .ToDictionary(p => p[0], p => p[1]);
-
-            topics.Add(new Topic(
-                int.Parse(map["tenantId"]),
-                Enum.Parse<TopicBucket>(map["bucket"]),
-                map["filter"]));
-        }
+            topics.Add(TopicSerializer.Deserialize(topicKey.ToString()));
 
         return topics.DistinctBy(t => t.Hash).ToList();
     }
@@ -142,5 +132,7 @@ public sealed class RedisSubscriptionStore(IRedisConnectionFactory redis) : ISub
     }
 
     public Task RemoveTopicFromBucketAsync(int tenantId, Topic topic, CancellationToken ct = default)
-        => redis.Database.SetRemoveAsync(RedisKeyBuilder.BucketTopics(tenantId, topic.Bucket), topic.Key);
+        => redis.Database.SetRemoveAsync(
+            RedisKeyBuilder.BucketTopics(tenantId, topic.Bucket),
+            TopicSerializer.Serialize(topic));
 }

@@ -6,10 +6,11 @@ public sealed class ChangeDetectionSettings
     public bool Enabled { get; set; } = true;
     public int PollIntervalMs { get; set; } = 1000;
     public string QueueVersion { get; set; } = "1";
-    public int TenantId { get; set; } = 1;
     public string DistributedLockName { get; set; } = "livesync-change-detection";
+    public int LockExpirySeconds { get; set; } = 30;
+    public int ClaimStaleAfterSeconds { get; set; } = 300;
     public int MaxRetries { get; set; } = 5;
     public int BatchSize { get; set; } = 50;
-    public int SubscriptionTtlSeconds { get; set; } = 300; // 5 min without renew
+    public int SubscriptionTtlSeconds { get; set; } = 300;
     public int ExpiryScanIntervalMs { get; set; } = 60000;
 }

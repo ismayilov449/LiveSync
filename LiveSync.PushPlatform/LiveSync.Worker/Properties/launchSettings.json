@@ -4,6 +4,7 @@
     "LiveSync.Worker": {
       "commandName": "Project",
       "dotnetRunMessages": true,
+      "applicationUrl": "http://localhost:5260",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }

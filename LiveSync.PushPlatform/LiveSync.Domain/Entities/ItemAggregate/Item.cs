@@ -11,6 +11,7 @@ public sealed class Item : AggregateRoot, IAggregateRoot
     public int ParentId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public bool IsActive { get; private set; }
+    public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
     private Item() { }
@@ -21,13 +22,22 @@ public sealed class Item : AggregateRoot, IAggregateRoot
         ParentId = parentId;
         Name = name;
         IsActive = true;
-        UpdatedAtUtc = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        CreatedAtUtc = now;
+        UpdatedAtUtc = now;
     }
 
     public static Item Create(int tenantId, int parentId, string name)
     {
-        var item = new Item(tenantId, parentId, name);
-        return item;
+        return new Item(tenantId, parentId, name);
+    }
+
+    public void CompleteCreation()
+    {
+        if (Id <= 0)
+            throw new InvalidOperationException("Item id must be assigned before completing creation.");
+
+        Raise(new ItemCreatedDomainEvent(TenantId, Id));
     }
 
     public void Rename(string name)

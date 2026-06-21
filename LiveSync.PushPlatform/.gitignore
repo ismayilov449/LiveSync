@@ -1,0 +1,9 @@
+# Build output
+LiveSync.PushPlatform/_build-out/
+LiveSync.PushPlatform/_build-out-api/
+
+# SPA build output (built in CI/Docker)
+LiveSync.PushPlatform/LiveSync.API/wwwroot/
+
+# User-specific launch settings
+*.slnLaunch.user

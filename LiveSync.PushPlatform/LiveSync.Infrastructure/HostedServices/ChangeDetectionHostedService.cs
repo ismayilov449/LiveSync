@@ -1,5 +1,6 @@
 ﻿using LiveSync.Application.Configuration;
-using LiveSync.Application.RealTimeSync.Changes;
+using LiveSync.Application.CQRS.RealTimeSync.Commands;
+using LiveSync.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -50,10 +51,26 @@ public sealed class ChangeDetectionHostedService(
 
     private async Task ProcessTickAsync(CancellationToken ct)
     {
-        // Scoped services (DbContext, ChangeProcessor, etc.) need a scope per tick
         using var scope = scopeFactory.CreateScope();
-        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        var tenantRegistry = scope.ServiceProvider.GetRequiredService<ITenantRegistry>();
+        var tenantIds = await tenantRegistry.GetActiveTenantIdsAsync(ct);
+        if (tenantIds.Count == 0)
+            return;
 
-        await mediator.Send(new ProcessPendingChangesCommand(), ct);
+        foreach (var tenantId in tenantIds)
+        {
+            using var tenantScope = scopeFactory.CreateScope();
+            tenantScope.ServiceProvider.GetRequiredService<ITenantContext>().SetTenantId(tenantId);
+            var mediator = tenantScope.ServiceProvider.GetRequiredService<IMediator>();
+
+            try
+            {
+                await mediator.Send(new ProcessPendingChangesCommand(), ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Change detection failed for tenant {TenantId}", tenantId);
+            }
+        }
     }
 }

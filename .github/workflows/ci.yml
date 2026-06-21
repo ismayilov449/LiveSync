@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: LiveSync.PushPlatform/LiveSync.API/client/package-lock.json
+
+      - name: Build React client
+        working-directory: LiveSync.PushPlatform/LiveSync.API/client
+        run: |
+          npm ci
+          npm run build
+
+      - name: Restore
+        run: dotnet restore LiveSync.PushPlatform/LiveSync.PushPlatform.slnx
+
+      - name: Build
+        run: dotnet build LiveSync.PushPlatform/LiveSync.PushPlatform.slnx --no-restore --configuration Release
+
+      - name: Vulnerable package scan
+        run: |
+          dotnet list LiveSync.PushPlatform/LiveSync.PushPlatform.slnx package --vulnerable --include-transitive > vulnerable.txt
+          cat vulnerable.txt
+          if grep -q "has the following vulnerable" vulnerable.txt; then
+            echo "Vulnerable packages detected"
+            exit 1
+          fi
+
+      - name: Unit tests
+        run: dotnet test LiveSync.PushPlatform/LiveSync.Tests/LiveSync.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage"
+
+      - name: Integration tests
+        run: dotnet test LiveSync.PushPlatform/LiveSync.IntegrationTests/LiveSync.IntegrationTests.csproj --configuration Release --verbosity normal
+
+      - name: Build Docker images
+        working-directory: LiveSync.PushPlatform
+        run: |
+          docker build -f Dockerfile.api -t livesync-api:ci .
+          docker build -f Dockerfile.worker -t livesync-worker:ci .

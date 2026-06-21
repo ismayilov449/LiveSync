@@ -17,6 +17,8 @@ public sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         builder.Property(x => x.TenantId).IsRequired();
         builder.Property(x => x.ParentId).IsRequired();
         builder.Property(x => x.IsActive).IsRequired();
+        builder.Property(x => x.CreatedAtUtc).IsRequired();
         builder.Property(x => x.UpdatedAtUtc).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
     }
 }

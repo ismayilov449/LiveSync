@@ -21,10 +21,10 @@ public sealed class SubscriptionManager(
         string filter,
         CancellationToken ct = default)
     {
-        if (!filterEvaluator.IsValidFilter(filter))
+        var topicBucket = Enum.Parse<TopicBucket>(bucket, ignoreCase: true);
+        if (!filterEvaluator.IsValidFilter(filter, topicBucket))
             throw new ArgumentException("Invalid filter expression.", nameof(filter));
 
-        var topicBucket = Enum.Parse<TopicBucket>(bucket, ignoreCase: true);
         var topic = new Topic(tenantId, topicBucket, filter);
 
         var existingTopics = await subscriptionStore.GetTopicsByBucketAsync(tenantId, topicBucket, ct);

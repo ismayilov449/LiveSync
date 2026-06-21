@@ -28,16 +28,48 @@ public sealed class SqlChangeQueueStore(
     public async Task<IReadOnlyList<QueuedChange>> ClaimBatchAsync(string version, int batchSize, CancellationToken ct = default)
     {
         var maxRetries = settings.Value.MaxRetries;
+        var claimToken = Guid.NewGuid().ToString("N");
+        var now = DateTimeOffset.UtcNow;
+        var staleBefore = now.AddSeconds(-settings.Value.ClaimStaleAfterSeconds);
+
+        await db.ChangeQueue
+            .Where(x => x.ProcessedAt == null && x.ClaimedAt != null && x.ClaimedAt < staleBefore)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.ClaimedAt, (DateTimeOffset?)null)
+                .SetProperty(x => x.ClaimToken, (string?)null), ct);
+
+        var candidateIds = await db.Database
+            .SqlQuery<long>($"""
+                SELECT Id
+                FROM ChangeQueue WITH (UPDLOCK, READPAST, ROWLOCK)
+                WHERE Version = {version}
+                  AND ProcessedAt IS NULL
+                  AND ClaimedAt IS NULL
+                  AND RetryCount < {maxRetries}
+                ORDER BY CreatedAt
+                OFFSET 0 ROWS FETCH NEXT {batchSize} ROWS ONLY
+                """)
+            .ToListAsync(ct);
+
+        if (candidateIds.Count == 0)
+            return [];
 
         var rows = await db.ChangeQueue
-            .Where(x => x.Version == version && x.ProcessedAt == null && x.RetryCount < maxRetries)
-            .OrderBy(x => x.CreatedAt)
-            .Take(batchSize)
+            .Where(x => candidateIds.Contains(x.Id))
             .ToListAsync(ct);
+
+        foreach (var row in rows)
+        {
+            row.ClaimedAt = now;
+            row.ClaimToken = claimToken;
+        }
+
+        await db.SaveChangesAsync(ct);
 
         return rows.Select(x => new QueuedChange
         {
             QueueEntryId = x.Id,
+            ClaimToken = claimToken,
             Envelope = ChangeEnvelope.Parse(x.Key, x.Payload, x.CreatedAt)
         }).ToList();
     }
@@ -60,6 +92,8 @@ public sealed class SqlChangeQueueStore(
 
         row.RetryCount++;
         row.LastError = error.Length > 2000 ? error[..2000] : error;
+        row.ClaimedAt = null;
+        row.ClaimToken = null;
 
         if (row.RetryCount >= settings.Value.MaxRetries)
             row.ProcessedAt = DateTimeOffset.UtcNow;

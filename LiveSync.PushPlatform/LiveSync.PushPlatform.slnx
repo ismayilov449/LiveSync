@@ -4,4 +4,6 @@
   <Project Path="LiveSync.Domain/LiveSync.Domain.csproj" />
   <Project Path="LiveSync.Infrastructure/LiveSync.Infrastructure.csproj" />
   <Project Path="LiveSync.Worker/LiveSync.Worker.csproj" />
+  <Project Path="LiveSync.Tests/LiveSync.Tests.csproj" />
+  <Project Path="LiveSync.IntegrationTests/LiveSync.IntegrationTests.csproj" />
 </Solution>

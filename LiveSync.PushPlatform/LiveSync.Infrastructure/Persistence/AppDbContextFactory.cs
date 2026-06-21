@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using LiveSync.Application.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 
@@ -17,8 +18,12 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
             .AddEnvironmentVariables()
             .Build();
 
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection is not configured.");
+        var tenancy = configuration.GetSection(TenancySettings.SectionName).Get<TenancySettings>()
+            ?? new TenancySettings();
+
+        var databaseName = $"{tenancy.DatabaseNamePrefix}1";
+        var connectionString = tenancy.ConnectionTemplate
+            .Replace("{DatabaseName}", databaseName, StringComparison.Ordinal);
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
         optionsBuilder.UseSqlServer(connectionString);

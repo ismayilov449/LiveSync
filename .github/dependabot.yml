@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: "/LiveSync.PushPlatform"
+    schedule:
+      interval: weekly
+    groups:
+      dotnet:
+        patterns:
+          - "Microsoft.*"
+          - "Asp.*"
+
+  - package-ecosystem: npm
+    directory: "/LiveSync.PushPlatform/LiveSync.API/client"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

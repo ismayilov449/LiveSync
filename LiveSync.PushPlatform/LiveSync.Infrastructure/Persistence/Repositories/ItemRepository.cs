@@ -38,4 +38,22 @@ public sealed class ItemRepository(AppDbContext db) : IItemRepository
         => predicate is null
             ? db.Items.ToListAsync(ct)
             : db.Items.Where(predicate).ToListAsync(ct);
+
+    public async Task<PagedResult<Item>> ListPagedAsync(
+        Expression<Func<Item, bool>> predicate,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        var query = db.Items.Where(predicate);
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<Item>(items, totalCount);
+    }
 }

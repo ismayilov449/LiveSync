@@ -1,5 +1,8 @@
 ﻿using FluentValidation;
 using LiveSync.Application.Common.Behaviors;
+using LiveSync.Application.CQRS.Items.Services;
+using LiveSync.Application.RealTimeSync.Handlers;
+using LiveSync.Application.RealTimeSync.Ports;
 using LiveSync.Application.RealTimeSync.Services;
 using LiveSync.Application.RealTimeSync.Subscriptions;
 using MediatR;
@@ -22,6 +25,8 @@ public static class DependencyInjection
 
         services.AddScoped<SubscriptionManager>();
         services.AddScoped<ChangeProcessor>();
+        services.AddScoped<IChangeHandler, ItemChangeHandler>();
+        services.AddScoped<IItemHierarchyValidator, ItemHierarchyValidator>();
 
         return services;
     }

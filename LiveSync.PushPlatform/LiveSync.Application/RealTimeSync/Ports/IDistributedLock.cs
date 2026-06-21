@@ -3,6 +3,7 @@
 public interface IDistributedLock : IAsyncDisposable
 {
     bool IsAcquired { get; }
+    Task<bool> RenewAsync(TimeSpan expiry, CancellationToken ct = default);
 }
 
 public interface IDistributedLockFactory

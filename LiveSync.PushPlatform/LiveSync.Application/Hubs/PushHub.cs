@@ -1,10 +1,12 @@
-﻿using LiveSync.Application.RealTimeSync.Contracts;
+﻿using LiveSync.Application.Common.Interfaces;
+using LiveSync.Application.RealTimeSync.Contracts;
 using LiveSync.Application.RealTimeSync.Subscriptions;
-using LiveSync.Application.Common.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace LiveSync.Application.Hubs;
 
+[Authorize]
 public sealed class PushHub(SubscriptionManager subscriptionManager, IUserContext userContext) : Hub<IPushClient>
 {
     public async Task<FindAndSubscribeResponse> FindAndSubscribe(FindAndSubscribeRequest request)

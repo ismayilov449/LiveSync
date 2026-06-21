@@ -11,4 +11,6 @@ public sealed class ChangeQueueEntry
     public int RetryCount { get; set; }
     public string? LastError { get; set; }
     public DateTimeOffset? ProcessedAt { get; set; }
+    public DateTimeOffset? ClaimedAt { get; set; }
+    public string? ClaimToken { get; set; }
 }
