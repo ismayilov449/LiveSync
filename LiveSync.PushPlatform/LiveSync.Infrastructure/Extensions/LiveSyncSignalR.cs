@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using LiveSync.Application.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 
@@ -6,6 +7,8 @@ namespace LiveSync.Infrastructure.Extensions;
 
 public static class LiveSyncSignalR
 {
+    public const string RedisChannelPrefix = "LiveSync";
+
     public static IServiceCollection AddLiveSyncSignalR(
     this IServiceCollection services,
     IConfiguration configuration)
@@ -13,10 +16,13 @@ public static class LiveSyncSignalR
         var redis = configuration.GetConnectionString("Redis")
             ?? throw new InvalidOperationException("Connection string 'Redis' is not configured.");
 
+        var redisOptions = ConfigurationOptions.Parse(redis);
+        redisOptions.ChannelPrefix = RedisChannel.Literal(RedisChannelPrefix);
+
         services.AddSignalR()
             .AddStackExchangeRedis(o =>
             {
-                o.Configuration = ConfigurationOptions.Parse(redis);
+                o.Configuration = redisOptions;
             });
 
         return services;

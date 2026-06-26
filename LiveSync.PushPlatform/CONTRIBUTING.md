@@ -5,10 +5,12 @@ Thanks for your interest in LiveSync!
 ## Development setup
 
 1. Fork and clone the repository
-2. Start infrastructure: `docker compose up -d` in `LiveSync.PushPlatform/`
-3. Run API: `dotnet run --project LiveSync.API`
-4. Run Worker: `dotnet run --project LiveSync.Worker`
-5. (Optional) Frontend: `cd LiveSync.API/client && npm run dev`
+2. Read **[docs/demo-walkthrough.md](docs/demo-walkthrough.md)** for the full demo script
+3. Start infrastructure: `docker compose up -d` in `LiveSync.PushPlatform/`
+4. Build client: `cd LiveSync.API/client && npm ci && npm run build`
+5. Run API: `dotnet run --project LiveSync.API`
+6. Run Worker: `dotnet run --project LiveSync.Worker`
+7. (Optional) Frontend dev: `cd LiveSync.API/client && npm run dev`
 
 ## Code standards
 

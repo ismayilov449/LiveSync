@@ -10,4 +10,7 @@ public sealed class SignalRRealTimeNotifier(IHubContext<PushHub, IPushClient> hu
 {
     public Task NotifyAsync(string connectionId, ChangeNotificationDto notification, CancellationToken ct = default)
         => hub.Clients.Client(connectionId).PushUpdate(notification);
+
+    public Task NotifyTenantAsync(int tenantId, ChangeNotificationDto notification, CancellationToken ct = default)
+        => hub.Clients.Group(PushHubGroups.Tenant(tenantId)).PushUpdate(notification);
 }

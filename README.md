@@ -1,116 +1,66 @@
-# LiveSync Push Platform
+# LiveSync
 
-Real-time filtered entity sync using SignalR, Redis, and a SQL-backed change queue.
+<p align="center">
+  <strong>Multi-tenant real-time sync platform</strong><br/>
+  Database-per-tenant SaaS · CQRS · SignalR · React
+</p>
 
-## Architecture
+<p align="center">
+  <a href="https://github.com/ismayilov449/LiveSync/actions/workflows/ci.yml"><img src="https://github.com/ismayilov449/LiveSync/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+</p>
 
-| Process | Responsibility |
-|---------|----------------|
-| **LiveSync.API** | REST mutations, SignalR hub (`/hubs/push`), health at `/health` |
-| **LiveSync.Worker** | Change queue polling, push delivery, subscription expiry |
+---
 
-Both processes share SQL Server and Redis. SignalR uses the Redis backplane so the worker can push to clients connected to the API.
+## 📖 Full documentation
 
-## Prerequisites
+**All project documentation lives in [`LiveSync.PushPlatform/README.md`](LiveSync.PushPlatform/README.md).**
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Docker](https://www.docker.com/) (for SQL Server + Redis)
+That README includes:
 
-## Quick start
+- Architecture diagrams (Mermaid + visuals)
+- Step-by-step demo walkthrough for reviewers
+- Multi-tenancy, RBAC, and real-time sync explained
+- Quick start, API reference, testing, Docker
+
+**Start here if you're evaluating this repo:**
+
+1. [LiveSync.PushPlatform/README.md](LiveSync.PushPlatform/README.md) — main guide
+2. [docs/demo-walkthrough.md](LiveSync.PushPlatform/docs/demo-walkthrough.md) — hands-on 10-minute demo
+3. [docs/real-time-sync.md](LiveSync.PushPlatform/docs/real-time-sync.md) — how live push works
+
+---
+
+## ⚡ Quick start
 
 ```bash
-# 1. Start infrastructure
+cd LiveSync.PushPlatform
 docker compose up -d
-
-# 2. Apply migrations (Development auto-migrates on API startup)
-dotnet ef database update --project LiveSync.Infrastructure --startup-project LiveSync.API
-
-# 3. Run API (http://localhost:5252)
-dotnet run --project LiveSync.API
-
-# 4. Run Worker (health at http://localhost:5260/health)
-dotnet run --project LiveSync.Worker
-
-# 5. Open test client
-# http://localhost:5252/test-client.html
+cd LiveSync.API/client && npm install && npm run build && cd ../..
+dotnet run --project LiveSync.PushPlatform/LiveSync.API
+dotnet run --project LiveSync.PushPlatform/LiveSync.Worker
 ```
 
-## Configuration
+Open http://localhost:5252 — login: `admin@livesync.local` / `Admin123!`
 
-### API (`LiveSync.API/appsettings.json`)
+---
 
-- `ChangeDetection:Enabled` — **false** (worker handles queue processing)
-- `Auth:ApiKey` — optional; when set, requires `X-Api-Key` header
-- `Auth:RequireTenantHeaders` — when true (non-dev), requires `X-Tenant-Id` and `X-User-Id`
-
-### Worker (`LiveSync.Worker/appsettings.json`)
-
-- `ChangeDetection:Enabled` — **true**
-- Runs subscription expiry and change detection hosted services
-
-## SignalR subscription
-
-Connect to `/hubs/push?tenantId=1&userId=1` and invoke:
-
-```js
-connection.invoke("FindAndSubscribe", {
-  bucket: "Item",
-  filter: "item.ParentId == 1"
-});
-```
-
-Filters use [DynamicExpresso](https://github.com/dynamicexpresso/DynamicExpresso) syntax against the bucket DTO (`item` for the Item bucket).
-
-## CQRS layout
-
-Application CQRS lives under `LiveSync.Application/CQRS/`, split by domain:
+## Repository layout
 
 ```
-CQRS/
-  Items/
-    Commands/      CreateItemCommand, CreateItemCommandHandler, ...
-    Queries/       GetItemByIdQuery, ListItemsQuery, ...
-    Models/        ItemDto
-    Validators/    CreateItemCommandValidator, ...
-    Services/      ItemHierarchyValidator (domain rules used by commands)
-  RealTimeSync/
-    Commands/      ProcessPendingChangesCommand, ...
+LiveSync/
+├── LiveSync.PushPlatform/     ← Main solution (read README inside)
+│   ├── LiveSync.API/          ← REST + React SPA + SignalR
+│   ├── LiveSync.Worker/       ← Change queue processor
+│   ├── LiveSync.Domain/
+│   ├── LiveSync.Application/
+│   ├── LiveSync.Infrastructure/
+│   ├── docs/                  ← Architecture, walkthrough, ADRs
+│   └── docker-compose.yml
+└── .github/workflows/         ← CI
 ```
 
-| Layer | Role |
-|-------|------|
-| `ICommand` / `ICommand<T>` | Write operations |
-| `IQuery<T>` | Read operations |
-| `ICommandHandler<,>` / `IQueryHandler<,>` | Handlers |
-| `CQRS/{Domain}/Models/` | Query/read DTOs |
-| `LiveSync.API/Contracts/` | HTTP request bodies |
-| `LiveSync.API/Mapping/` | Maps API contracts → commands |
+---
 
-Controllers bind HTTP contracts, map to commands/queries, and call `ISender.Send(...)`.
+## License
 
-## REST API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/items` | List items (`?parentId=` optional) |
-| GET | `/api/items/{id}` | Get item by id |
-| POST | `/api/items` | Create item |
-| PUT | `/api/items/{id}` | Rename item |
-| DELETE | `/api/items/{id}` | Delete item |
-| POST | `/api/items/{id}/deactivate` | Deactivate item |
-| PUT | `/api/items/{id}/parent` | Move item |
-
-Pass tenant/user via headers: `X-Tenant-Id`, `X-User-Id`.
-
-## Adding a new bucket
-
-1. Add enum value to `TopicBucket`
-2. Implement `IBucketModule` (fetch + deserialize DTO)
-3. Implement `IChangeHandler`
-4. Register both in `DependencyInjection`
-
-## Development
-
-- OpenAPI: `/openapi/v1.json`
-- Scalar UI (dev): `/scalar/v1`
-- Tests: `dotnet test`
+MIT — see [LiveSync.PushPlatform/LICENSE](LiveSync.PushPlatform/LICENSE).

@@ -39,17 +39,12 @@ public sealed class ItemChangeHandler(
         foreach (var topic in topics)
         {
             if (filterEvaluator.Matches(topic.Filter, dto))
-            {
                 await topicDataCache.UpsertAsync(topic, dto.FrontEndId, dto, ct);
-                await NotifyTopicAsync(topic, dto.FrontEndId, NotificationOperation.Upsert, dto, ct);
-            }
             else
-            {
-                var deleted = await topicDataCache.DeleteAsync(topic, dto.FrontEndId, ct);
-                if (deleted)
-                    await NotifyTopicAsync(topic, dto.FrontEndId, NotificationOperation.Delete, null, ct);
-            }
+                await topicDataCache.DeleteAsync(topic, dto.FrontEndId, ct);
         }
+
+        await NotifyTenantAsync(change.TenantId, dto.FrontEndId, NotificationOperation.Upsert, dto, ct);
     }
 
     private async Task ProcessDeleteAsync(ChangeEnvelope change, CancellationToken ct)
@@ -58,33 +53,29 @@ public sealed class ItemChangeHandler(
         var frontendId = $"{change.Bucket.ToString().ToLowerInvariant()}-{change.EntityId}";
 
         foreach (var topic in topics)
-        {
-            var deleted = await topicDataCache.DeleteAsync(topic, frontendId, ct);
-            if (deleted)
-                await NotifyTopicAsync(topic, frontendId, NotificationOperation.Delete, null, ct);
-        }
+            await topicDataCache.DeleteAsync(topic, frontendId, ct);
+
+        await NotifyTenantAsync(change.TenantId, frontendId, NotificationOperation.Delete, null, ct);
     }
 
-    private async Task NotifyTopicAsync(
-        Topic topic,
+    private Task NotifyTenantAsync(
+        int tenantId,
         string frontendId,
         NotificationOperation operation,
         object? dto,
         CancellationToken ct)
     {
-        var subs = await subscriptionStore.GetByTopicHashAsync(topic.TenantId, topic.Hash, ct);
         var payload = new ChangeNotificationDto
         {
             Operation = operation,
             Entity = new ChangeEntityDto
             {
-                Bucket = topic.Bucket.ToString().ToLowerInvariant(),
+                Bucket = TopicBucket.Item.ToString().ToLowerInvariant(),
                 Id = frontendId
             },
             Change = dto
         };
 
-        foreach (var sub in subs)
-            await notifier.NotifyAsync(sub.ConnectionId, payload, ct);
+        return notifier.NotifyTenantAsync(tenantId, payload, ct);
     }
 }

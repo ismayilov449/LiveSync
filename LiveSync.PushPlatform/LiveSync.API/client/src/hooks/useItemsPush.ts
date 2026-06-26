@@ -12,7 +12,8 @@ interface FindAndSubscribeResponse {
 
 export type PushConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
-const RENEW_INTERVAL_MS = 4 * 60 * 1000;
+const RENEW_INTERVAL_MS = 60 * 1000;
+const PUSH_DEBOUNCE_MS = 200;
 
 export function useItemsPush(
   token: string | null,
@@ -32,18 +33,46 @@ export function useItemsPush(
     let connection: HubConnection | null = null;
     let subscriptionId: string | null = null;
     let renewTimer: ReturnType<typeof setInterval> | undefined;
+    let pushDebounceTimer: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
+
+    const unsubscribeCurrent = async () => {
+      if (!connection || !subscriptionId) return;
+      const currentId = subscriptionId;
+      subscriptionId = null;
+      try {
+        await connection.invoke('Unsubscribe', currentId);
+      } catch {
+        // connection may already be closed
+      }
+    };
+
+    const subscribe = async () => {
+      if (!connection || disposed) return;
+      await unsubscribeCurrent();
+
+      const response = await connection.invoke<FindAndSubscribeResponse>(
+        'FindAndSubscribe',
+        { bucket: 'Item', filter: `item.TenantId == ${tenantId}` },
+      );
+
+      if (disposed) return;
+      subscriptionId = response.subscriptionId;
+      setStatus('connected');
+    };
+
+    const scheduleRefresh = () => {
+      if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
+      pushDebounceTimer = setTimeout(() => {
+        if (!disposed) onUpdateRef.current();
+      }, PUSH_DEBOUNCE_MS);
+    };
 
     const cleanup = async () => {
       disposed = true;
+      if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
       if (renewTimer) clearInterval(renewTimer);
-      if (connection && subscriptionId) {
-        try {
-          await connection.invoke('Unsubscribe', subscriptionId);
-        } catch {
-          // connection may already be closed
-        }
-      }
+      await unsubscribeCurrent();
       if (connection) {
         try {
           await connection.stop();
@@ -64,14 +93,9 @@ export function useItemsPush(
 
       connection.onreconnecting(() => setStatus('reconnecting'));
       connection.onreconnected(async () => {
-        setStatus('connected');
-        if (!connection || disposed) return;
+        if (disposed) return;
         try {
-          const response = await connection.invoke<FindAndSubscribeResponse>(
-            'FindAndSubscribe',
-            { bucket: 'Item', filter: `item.TenantId == ${tenantId}` },
-          );
-          subscriptionId = response.subscriptionId;
+          await subscribe();
         } catch {
           setStatus('offline');
         }
@@ -81,20 +105,13 @@ export function useItemsPush(
       });
 
       connection.on('PushUpdate', () => {
-        onUpdateRef.current();
+        scheduleRefresh();
       });
 
       await connection.start();
       if (disposed) return;
 
-      const response = await connection.invoke<FindAndSubscribeResponse>(
-        'FindAndSubscribe',
-        { bucket: 'Item', filter: `item.TenantId == ${tenantId}` },
-      );
-      if (disposed) return;
-
-      subscriptionId = response.subscriptionId;
-      setStatus('connected');
+      await subscribe();
 
       renewTimer = setInterval(() => {
         if (subscriptionId && connection?.state === HubConnectionState.Connected) {
@@ -103,11 +120,23 @@ export function useItemsPush(
       }, RENEW_INTERVAL_MS);
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || disposed) return;
+      if (connection?.state === HubConnectionState.Connected) {
+        void subscribe().catch(() => setStatus('offline'));
+      } else if (connection?.state === HubConnectionState.Disconnected) {
+        void start().catch(() => setStatus('offline'));
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     void start().catch(() => {
       if (!disposed) setStatus('offline');
     });
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       setStatus('offline');
       void cleanup();
     };

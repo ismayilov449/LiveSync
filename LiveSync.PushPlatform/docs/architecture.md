@@ -11,7 +11,8 @@ LiveSync is a multi-tenant platform where each organization (tenant) receives an
 - REST API (`/api/v1/...`) with JWT authentication
 - Serves the React SPA from `wwwroot/`
 - SignalR hub at `/hubs/push` for live updates
-- Does **not** run change detection (delegated to Worker)
+- Pushes **immediate** tenant-wide SignalR notifications on item mutations
+- Does **not** run the change-detection poll loop (delegated to Worker by default)
 
 ### LiveSync.Worker
 
@@ -42,11 +43,14 @@ Client POST /api/v1/items
   → CreateItemCommandHandler
   → Item saved to tenant DB
   → ItemCreatedDomainEvent
+  → API: NotifyTenantItemDomainEventHandler → SignalR PushUpdate (immediate)
   → Enqueued in ChangeQueue
   → Worker picks up change
-  → ItemChangeHandler updates Redis + SignalR PushUpdate
+  → ItemChangeHandler updates Redis + SignalR PushUpdate (consistency)
   → Connected clients refresh
 ```
+
+See [real-time-sync.md](real-time-sync.md) for sequence diagrams.
 
 ## Subscription flow
 
