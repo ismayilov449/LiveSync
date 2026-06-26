@@ -6,6 +6,8 @@ LiveSync is a **multi-tenant support desk** where each organization (tenant) rec
 
 The business domain is **Support Desk**: agents collaborate on **tickets** organized into **queues**, with real-time sync when anyone opens, comments on, assigns, or advances ticket status.
 
+![Tickets UI — live sync and detail panel](../assets/screenshot-tickets.png)
+
 ## Components
 
 ### LiveSync.API

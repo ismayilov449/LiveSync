@@ -26,7 +26,7 @@ Copy-paste bullets for CV, LinkedIn, or GitHub profile. **Customize** with your 
 
 - Specified **non-functional requirements** for isolation, latency, operability (health, Serilog, correlation IDs, OpenTelemetry).
 
-- Delivered **CI/CD pipeline** (GitHub Actions): client lint + Vitest + build, unit + Testcontainers integration tests (31 total automated), vulnerability scan, Docker images.
+- Delivered **CI/CD pipeline** (GitHub Actions): client lint + Vitest + build, unit tests, vulnerability scan, Docker images; **demo GIFs and screenshots** in `docs/assets/` for reviewer onboarding.
 
 ---
 

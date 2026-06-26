@@ -19,7 +19,8 @@ Thanks for your interest in LiveSync!
 
 **Troubleshooting:** [docs/troubleshooting.md](docs/troubleshooting.md)  
 **Client patterns:** [docs/client-development.md](docs/client-development.md)  
-**Adding features:** [docs/extending-the-platform.md](docs/extending-the-platform.md)
+**Adding features:** [docs/extending-the-platform.md](docs/extending-the-platform.md)  
+**Demo assets:** `python scripts/capture-demo-assets.py` (regenerates GIFs/screenshots in `docs/assets/`)
 
 ## Code standards
 

@@ -19,6 +19,8 @@ LiveSync is a **multi-tenant B2B support desk SaaS reference architecture** that
 | **API platform** | Per-tenant rate limits, idempotency, audit log, tenant lifecycle |
 | **Admin UX** | Tenant-scoped admin console (users, audit, settings, queue overview) |
 
+**Visual demos** (recorded from the running app): see [README Live demo](../README.md#live-demo) and [docs/assets/](assets/).
+
 ---
 
 ## C4 model

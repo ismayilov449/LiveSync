@@ -2,6 +2,8 @@
 
 How LiveSync keeps multiple browser tabs (and users) in sync within the same tenant — **per data bucket** (Tickets vs Queues).
 
+![Real-time sync — admin and member tabs](../assets/demo-realtime-sync.gif)
+
 ## Two notification paths (by design)
 
 | Path | When | Purpose |

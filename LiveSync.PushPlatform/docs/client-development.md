@@ -17,6 +17,19 @@ The React SPA lives in `LiveSync.API/client/` and builds into `LiveSync.API/wwwr
 | `npm test` | Vitest unit tests (`pushListPatch.test.ts`) |
 | `npm run lint` | ESLint |
 
+## UI reference
+
+Screenshots and GIFs of the running app live in [docs/assets/](assets/README.md):
+
+| Asset | Shows |
+|-------|--------|
+| `screenshot-tickets.png` | Tickets list + detail, SignalR live badge |
+| `screenshot-queues.png` | Queues page, bucket-scoped push |
+| `demo-realtime-sync.gif` | Two users, same tenant, live row sync |
+| `demo-ticket-workflow.gif` | Status machine buttons in detail panel |
+
+Regenerate: `python scripts/capture-demo-assets.py`
+
 ## Project layout
 
 ```

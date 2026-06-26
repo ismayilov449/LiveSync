@@ -1,5 +1,7 @@
 # Multi-tenancy
 
+![Tenant isolation — separate databases per organization](../assets/demo-tenant-isolation.gif)
+
 ## Model
 
 LiveSync uses **database-per-tenant** isolation:

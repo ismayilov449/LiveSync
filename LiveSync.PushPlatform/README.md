@@ -61,6 +61,32 @@
 
 ## Live demo
 
+### Support desk UI
+
+![Tickets — SignalR live status, list + detail panel](docs/assets/screenshot-tickets.png)
+
+![Queues — bucket-scoped live status](docs/assets/screenshot-queues.png)
+
+### Real-time sync — two users, same tenant
+
+![Real-time sync — admin and member tabs update without refresh](docs/assets/demo-realtime-sync.gif)
+
+*Left: tenant admin · Right: member user · Same tenant (`t/1`) · Ticket rows and comments sync via bucket-scoped SignalR.*
+
+### Ticket workflow
+
+![Assign → start progress → resolve → close](docs/assets/demo-ticket-workflow.gif)
+
+### Tenant isolation
+
+![Separate tenants — independent ticket universes](docs/assets/demo-tenant-isolation.gif)
+
+*Left: tenant 1 · Right: newly registered tenant 2 · Database-per-tenant isolation.*
+
+### Admin console
+
+![Admin overview — queue pending and dead-letter counts](docs/assets/demo-admin-console.png)
+
 ### Architecture overview
 
 ```mermaid
@@ -75,13 +101,7 @@ flowchart LR
     SPA <-->|WSS bucket push| API
 ```
 
-### Real-time sync — two users, same tenant
-
-Record a GIF for GitHub: follow [docs/demo-walkthrough.md](docs/demo-walkthrough.md) Scenario 2, save as `docs/assets/demo-realtime-sync.gif`, then add:
-
-`![Real-time sync demo](docs/assets/demo-realtime-sync.gif)`
-
-Static screenshots: see [docs/assets/README.md](docs/assets/README.md).
+Re-record assets anytime: `python scripts/capture-demo-assets.py` (API + Worker + Docker required). See [docs/assets/README.md](docs/assets/README.md).
 
 ---
 
@@ -177,6 +197,10 @@ flowchart LR
 
 This is the **most interesting part** of the codebase.
 
+![Real-time sync demo](docs/assets/demo-realtime-sync.gif)
+
+See also: [docs/real-time-sync.md](docs/real-time-sync.md) · [ADR 005 — multi-bucket sync](docs/adr/005-multi-bucket-real-time-sync.md)
+
 ### What happens when a user opens a ticket?
 
 ```mermaid
@@ -216,6 +240,8 @@ Deep dive: [docs/real-time-sync.md](docs/real-time-sync.md)
 ---
 
 ## Multi-tenancy
+
+![Tenant isolation — separate data per organization](docs/assets/demo-tenant-isolation.gif)
 
 ### Model: database per tenant
 
@@ -259,6 +285,8 @@ Details: [docs/tenancy.md](docs/tenancy.md) · ADR: [docs/adr/001-database-per-t
 ---
 
 ## Admin UI
+
+![Admin overview — organization health and change-queue stats](docs/assets/demo-admin-console.png)
 
 Tenant administrators (`TenantAdmin` role) see an **Admin** link in the header. The console uses a compact dark UI with monospace accents for technical data.
 
@@ -476,6 +504,8 @@ Full scripted guide: **[docs/demo-walkthrough.md](docs/demo-walkthrough.md)**
 
 ### Scenario: Two users, one tenant (live sync)
 
+![Real-time sync demo](docs/assets/demo-realtime-sync.gif)
+
 1. Login as **admin** in a normal browser tab.
 2. **Admin → Users** — invite a member user.
 3. Open **incognito** → login as member.
@@ -487,10 +517,14 @@ This proves: shared tenant DB + bucket-scoped SignalR + row-level client patch.
 
 ### Scenario: Tenant isolation
 
+![Tenant isolation demo](docs/assets/demo-tenant-isolation.gif)
+
 1. **Register** a new organization (creates tenant 2).
 2. Tickets from tenant 1 are invisible in tenant 2.
 
 ### Scenario: RBAC
+
+![Ticket workflow — assign through close](docs/assets/demo-ticket-workflow.gif)
 
 - Member can open tickets, comment, and advance workflow (start/resolve/close).
 - Member cannot assign or delete tickets — admin only.
@@ -675,7 +709,7 @@ Never commit production secrets. See `appsettings.Development.json` or copy `app
 | [docs/real-time-sync.md](docs/real-time-sync.md) | Push pipeline, buckets, dead-letter, metrics |
 | [docs/adr/001-database-per-tenant.md](docs/adr/001-database-per-tenant.md) | Why separate DBs per tenant |
 | [docs/adr/](docs/adr/) | All ADRs (001–006: tenancy, worker, outbox, SignalR, multi-bucket, support desk) |
-| [docs/assets/README.md](docs/assets/README.md) | GIF/screenshot recording guide |
+| [docs/assets/README.md](docs/assets/README.md) | Demo GIFs, screenshots, capture script |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, PR guidelines, doc map |
 
 ---
@@ -684,11 +718,11 @@ Never commit production secrets. See `appsettings.Development.json` or copy `app
 
 **Suggested 10-minute review path:**
 
-1. [docs/solution-architecture.md](docs/solution-architecture.md) — C4 + NFRs + platform waves
-2. [docs/demo-walkthrough.md](docs/demo-walkthrough.md) — live demo (two users, one tenant)
-3. Skim `OpenTicketCommandHandler` → `NotifyTenantTicketDomainEventHandler` → `PushHub`
-4. Review [ADRs](docs/adr/) for decision rationale
-5. Glance at `LiveSync.IntegrationTests/` (14 tests) for proof it works
+1. **Live demo** section above — GIFs show real-time sync, workflow, and tenant isolation
+2. [docs/solution-architecture.md](docs/solution-architecture.md) — C4 + NFRs + platform waves
+3. [docs/demo-walkthrough.md](docs/demo-walkthrough.md) — hands-on steps behind the recordings
+4. Skim `OpenTicketCommandHandler` → `NotifyTenantTicketDomainEventHandler` → `PushHub`
+5. Review [ADRs](docs/adr/) for decision rationale
 6. Optional: **Admin → Overview** + http://localhost:5252/metrics
 
 **Talking points:**

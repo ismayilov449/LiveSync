@@ -28,6 +28,7 @@ dotnet run --project LiveSync.Worker # Worker on :5260 metrics
 | Prometheus targets down | API/Worker not on host ports | On Docker Desktop use `host.docker.internal` in scrape config |
 | Admin nav missing | User lacks `TenantAdmin` | Login as admin or invite with admin role |
 | JWT / auth errors on `dotnet run` | Empty `SecretKey` without Development env | Set `ASPNETCORE_ENVIRONMENT=Development` or use User Secrets |
+| `npm ci` ERESOLVE (vite vs plugin-react) | Vite 8 with `@vitejs/plugin-react` 4.x | Use Vite 6 + plugin-react 4 (see `client/package.json`); commit `package-lock.json` |
 | Windows SQL vs Docker mismatch | `appsettings.Development.json` uses Trusted_Connection | Use Docker SQL auth or copy [appsettings.Development.docker.example.json](../LiveSync.API/appsettings.Development.docker.example.json) |
 
 ## Configuration

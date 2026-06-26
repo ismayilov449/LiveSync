@@ -2,8 +2,12 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using LiveSync.Application.Configuration;
+using LiveSync.Infrastructure.Identity;
+using LiveSync.Infrastructure.Persistence.ControlPlane;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -14,10 +18,13 @@ namespace LiveSync.API.Controllers;
 [Route("dev/auth")]
 public sealed class DevAuthController(
     IOptions<AuthSettings> authOptions,
-    IHostEnvironment environment) : ControllerBase
+    IHostEnvironment environment,
+    UserManager<ApplicationUser> userManager) : ControllerBase
 {
     [HttpPost("token")]
-    public ActionResult<DevTokenResponse> CreateToken([FromBody] DevTokenRequest request)
+    public async Task<ActionResult<DevTokenResponse>> CreateToken(
+        [FromBody] DevTokenRequest request,
+        CancellationToken ct)
     {
         if (!environment.IsDevelopment())
             return NotFound();
@@ -32,8 +39,19 @@ public sealed class DevAuthController(
             new(settings.Claims.TenantId, request.TenantId.ToString()),
             new(settings.Claims.UserId, request.UserId.ToString()),
             new(settings.Claims.UserName, request.UserName),
+            new(ClaimTypes.NameIdentifier, request.UserId.ToString()),
             new(ClaimTypes.Name, request.UserName)
         };
+
+        var user = await userManager.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == request.UserId && u.TenantId == request.TenantId, ct);
+
+        if (user is not null)
+        {
+            var roles = await userManager.GetRolesAsync(user);
+            claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

@@ -1,19 +1,35 @@
 # Documentation assets
 
-Place visual assets here for the GitHub README.
+Visual demos for the GitHub README and technical docs. All files below are checked into this folder.
 
-## Recommended files
+## Files
 
-| File | Purpose | How to create |
-|------|---------|----------------|
-| `demo-realtime-sync.gif` | Two tabs, both users see live ticket updates | [demo-walkthrough.md](../demo-walkthrough.md) Scenario 2 + [ScreenToGif](https://www.screentogif.com/) |
-| `demo-ticket-workflow.gif` | Assign → start → resolve → close | Record Scenario 3 from walkthrough |
-| `demo-tenant-isolation.gif` | Two tenants, separate data | Record Scenario 4 from walkthrough |
-| `demo-admin-console.png` | Admin overview with queue stats | Screenshot **Admin → Overview** while Worker is running |
-| `screenshot-tickets.png` | Static hero image | Screenshot of Tickets page with **signalr · live** status and detail panel |
-| `screenshot-queues.png` | Queues page | Screenshot with bucket-scoped live status |
+| File | Purpose |
+|------|---------|
+| `screenshot-tickets.png` | Tickets page — **signalr · live** status, list + detail panel |
+| `screenshot-queues.png` | Queues page — bucket-scoped live status |
+| `demo-realtime-sync.gif` | Two tabs (admin + member), live ticket updates without refresh |
+| `demo-ticket-workflow.gif` | Assign → start progress → resolve → close |
+| `demo-tenant-isolation.gif` | Two tenants — separate ticket universes |
+| `demo-admin-console.png` | Admin → Overview — queue pending / dead-letter stats |
 
-## UI notes (current design)
+## Regenerate (automated)
+
+With Docker, API, and Worker running:
+
+```bash
+pip install playwright requests Pillow
+python -m playwright install chromium
+python scripts/capture-demo-assets.py
+```
+
+The script uses the dev token endpoint (`POST /dev/auth/token`) and Playwright headless Chrome — no manual ScreenToGif session required.
+
+## Regenerate (manual)
+
+Follow [demo-walkthrough.md](../demo-walkthrough.md) Scenarios 2–4 and use [ScreenToGif](https://www.screentogif.com/) if you prefer hand-recorded GIFs.
+
+### UI notes (current design)
 
 The SPA uses a **dark, compact, monospace-accented** theme:
 
@@ -23,15 +39,10 @@ The SPA uses a **dark, compact, monospace-accented** theme:
 - Ticket detail: status pill, workflow buttons, assign dropdown, comments
 - Admin sidebar: Overview, Users, Audit, Settings
 
-Capture screenshots with the API running and Worker started so queue stats are populated.
+Capture screenshots with the API running and Worker started so queue stats are populated on **Admin → Overview**.
 
-## Recording tips
+### Recording tips
 
 - **Resolution:** 1280×720 or 1920×1080
 - **Length:** 15–30 seconds per GIF
-- **Size:** Keep under 10 MB for GitHub (use ScreenToGif optimizer)
-- **Focus:** Show the ticket appearing in the *other* tab without refresh, or a comment syncing live
-
-## After adding GIFs
-
-Uncomment or add image lines in the root `README.md` **Live demo** section.
+- **Size:** Keep under 10 MB for GitHub (use ScreenToGif optimizer or the capture script)
