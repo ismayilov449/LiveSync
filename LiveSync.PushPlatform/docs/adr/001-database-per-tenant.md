@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-LiveSync is a multi-tenant SaaS platform storing hierarchical items per organization. We need strong isolation between tenants, predictable performance, and a path to scale individual tenants.
+LiveSync is a multi-tenant SaaS **support desk** platform storing queues, tickets, and comments per organization. We need strong isolation between tenants, predictable performance, and a path to scale individual tenants.
 
 Options considered:
 

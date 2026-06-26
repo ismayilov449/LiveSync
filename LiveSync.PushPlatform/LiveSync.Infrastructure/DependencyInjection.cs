@@ -38,7 +38,8 @@ public static class DependencyInjection
 
         services.AddLiveSyncTenancy(configuration);
 
-        services.AddScoped<IItemRepository, ItemRepository>();
+        services.AddScoped<IQueueRepository, QueueRepository>();
+        services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IDomainEventDispatcher, MediatRDomainEventDispatcher>();
 
@@ -54,7 +55,8 @@ public static class DependencyInjection
         services.AddScoped<ITopicDataCache, RedisTopicDataCache>();
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
 
-        services.AddScoped<IBucketModule, ItemBucketModule>();
+        services.AddScoped<IBucketModule, QueueBucketModule>();
+        services.AddScoped<IBucketModule, TicketBucketModule>();
         services.AddScoped<BucketModuleRegistry>();
 
         services.AddScoped<IFilterEvaluator, DynamicExpressoFilterEvaluator>();

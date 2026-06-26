@@ -13,8 +13,11 @@ export function AppLayout() {
           <span className="brand-meta">t/{session?.tenantId}</span>
         </div>
         <nav className="app-nav">
-          <NavLink to="/items" className={({ isActive }) => (isActive ? 'active' : '')}>
-            Items
+          <NavLink to="/tickets" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Tickets
+          </NavLink>
+          <NavLink to="/queues" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Queues
           </NavLink>
           {isTenantAdmin && (
             <NavLink

@@ -2,5 +2,6 @@
 
 public enum TopicBucket
 {
-    Item = 1
+    Ticket = 1,
+    Queue = 2,
 }

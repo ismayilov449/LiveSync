@@ -50,7 +50,7 @@ public static class DatabaseInitializer
         if (hostingOptions.MigrateTenantDatabasesOnStartup)
             await MigrateAllTenantDatabasesAsync(scope.ServiceProvider, logger, ct);
 
-        await BootstrapTenantRootItemsAsync(scope.ServiceProvider, logger, ct);
+        await BootstrapTenantDefaultQueuesAsync(scope.ServiceProvider, logger, ct);
 
         await RepairProvisioningTenantsAsync(scope.ServiceProvider, logger, ct);
 
@@ -58,21 +58,21 @@ public static class DatabaseInitializer
             await SeedDevelopmentDataAsync(scope.ServiceProvider, logger, ct);
     }
 
-    private static async Task BootstrapTenantRootItemsAsync(
+    private static async Task BootstrapTenantDefaultQueuesAsync(
         IServiceProvider services,
         ILogger logger,
         CancellationToken ct)
     {
         var tenantRegistry = services.GetRequiredService<ITenantRegistry>();
-        var tenantItemBootstrap = services.GetRequiredService<ITenantItemBootstrap>();
+        var bootstrap = services.GetRequiredService<ITenantSupportDeskBootstrap>();
         var tenantIds = await tenantRegistry.GetActiveTenantIdsAsync(ct);
 
         foreach (var tenantId in tenantIds)
         {
-            var rootId = await tenantItemBootstrap.EnsureRootItemAsync(tenantId, ct);
+            var queueId = await bootstrap.EnsureDefaultQueueAsync(tenantId, ct);
             logger.LogInformation(
-                "Ensured root item {RootItemId} exists for tenant {TenantId}",
-                rootId,
+                "Ensured default queue {QueueId} exists for tenant {TenantId}",
+                queueId,
                 tenantId);
         }
     }
@@ -168,22 +168,39 @@ public static class DatabaseInitializer
         ILogger logger,
         CancellationToken ct)
     {
-        var tenantItemBootstrap = services.GetRequiredService<ITenantItemBootstrap>();
-        var rootId = await tenantItemBootstrap.EnsureRootItemAsync(tenantId, ct);
+        var bootstrap = services.GetRequiredService<ITenantSupportDeskBootstrap>();
+        var queueId = await bootstrap.EnsureDefaultQueueAsync(tenantId, ct);
 
         var tenantContext = services.GetRequiredService<ITenantContext>();
         tenantContext.SetTenantId(tenantId);
 
         var tenantDb = services.GetRequiredService<AppDbContext>();
-        if (await tenantDb.Items.CountAsync(ct) > 1)
+        if (await tenantDb.Tickets.AnyAsync(ct))
             return;
 
-        logger.LogInformation("Seeding sample items for tenant {TenantId}", tenantId);
+        logger.LogInformation("Seeding sample tickets for tenant {TenantId}", tenantId);
 
-        tenantDb.Items.Add(Domain.Entities.ItemAggregate.Item.Create(tenantId, rootId, "Apple"));
-        tenantDb.Items.Add(Domain.Entities.ItemAggregate.Item.Create(tenantId, rootId, "Banana"));
-        tenantDb.Items.Add(Domain.Entities.ItemAggregate.Item.Create(tenantId, rootId, "Cherry"));
+        var ticket1 = Domain.Entities.TicketAggregate.Ticket.Open(
+            tenantId,
+            queueId,
+            "Cannot log in",
+            "User reports password reset email never arrives.",
+            Domain.Enums.TicketPriority.High,
+            reporterUserId: 1);
+        tenantDb.Tickets.Add(ticket1);
         await tenantDb.SaveChangesAsync(ct);
+        ticket1.CompleteCreation();
+
+        var ticket2 = Domain.Entities.TicketAggregate.Ticket.Open(
+            tenantId,
+            queueId,
+            "Feature request: dark mode",
+            "Would love a dark theme option in the dashboard.",
+            Domain.Enums.TicketPriority.Normal,
+            reporterUserId: 1);
+        tenantDb.Tickets.Add(ticket2);
+        await tenantDb.SaveChangesAsync(ct);
+        ticket2.CompleteCreation();
     }
 
     private static async Task EnsureDatabaseExistsAsync(MasterDbContext masterDb, CancellationToken ct)

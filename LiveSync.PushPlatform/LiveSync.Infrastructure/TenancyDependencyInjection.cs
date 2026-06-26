@@ -28,7 +28,7 @@ public static class TenancyDependencyInjection
         services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<ITenantProvisioner, TenantProvisioner>();
-        services.AddScoped<ITenantItemBootstrap, TenantItemBootstrap>();
+        services.AddScoped<ITenantSupportDeskBootstrap, TenantSupportDeskBootstrap>();
         services.AddScoped<ITenantAccessValidator, TenantAccessValidator>();
         services.AddScoped<ISharedDatabaseMigrator, SharedDatabaseMigrator>();
 

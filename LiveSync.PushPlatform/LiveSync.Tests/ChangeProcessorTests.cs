@@ -12,13 +12,13 @@ public sealed class ChangeProcessorTests
     public async Task ProcessAsync_RoutesToRegisteredBucketHandler()
     {
         var handler = new Mock<IChangeHandler>();
-        handler.SetupGet(h => h.Bucket).Returns(TopicBucket.Item);
+        handler.SetupGet(h => h.Bucket).Returns(TopicBucket.Ticket);
 
         var processor = new ChangeProcessor([handler.Object]);
         var envelope = new ChangeEnvelope
         {
-            Key = "table#Item:tenantId#1:eventType#Update",
-            Bucket = TopicBucket.Item,
+            Key = "table#Ticket:tenantId#1:eventType#Update",
+            Bucket = TopicBucket.Ticket,
             TenantId = 1,
             EventType = ChangeType.Update,
             EntityId = 10

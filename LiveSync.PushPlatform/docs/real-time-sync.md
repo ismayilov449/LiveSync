@@ -1,15 +1,15 @@
 # Real-time sync pipeline
 
-How LiveSync keeps multiple browser tabs (and users) in sync within the same tenant.
+How LiveSync keeps multiple browser tabs (and users) in sync within the same tenant — **per data bucket** (Tickets vs Queues).
 
 ## Two notification paths (by design)
 
 | Path | When | Purpose |
 |------|------|---------|
-| **API immediate push** | Right after item save in API | Fast UI refresh for all users in tenant |
+| **API immediate push** | Right after save in API | Fast UI update for subscribers of that bucket |
 | **Worker queue processing** | Polls `ChangeQueue` every ~1s | Redis topic cache, filtered subscriptions, consistency |
 
-Both send `PushUpdate` to SignalR group `tenant:{tenantId}`.
+Both send `PushUpdate` to SignalR group `tenant:{tenantId}:bucket:{ticket|queue}`.
 
 ## Change queue states
 
@@ -25,13 +25,14 @@ Prometheus gauges (sampled every 15s by `ChangeQueueMetricsHostedService`):
 - `livesync_change_queue_depth`
 - `livesync_change_queue_dead_letter_depth`
 
-## Sequence — create item
+## Sequence — open ticket (bucket: ticket)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant TabA as Browser Tab A
-    participant TabB as Browser Tab B
+    participant TabA as Browser Tab A (Tickets)
+    participant TabB as Browser Tab B (Tickets)
+    participant TabC as Browser Tab C (Queues)
     participant API as LiveSync API
     participant DB as Tenant DB
     participant Q as ChangeQueue
@@ -39,45 +40,52 @@ sequenceDiagram
     participant Redis as Redis
     participant Hub as SignalR Hub
 
-    TabA->>API: POST /api/v1/items
-    API->>DB: INSERT Item + SaveChanges
-    API->>API: ItemCreatedDomainEvent
-  Note over API,Hub: Immediate path
-    API->>Hub: NotifyTenantAsync(tenant:1)
+    TabA->>API: POST /api/v1/tickets
+    API->>DB: INSERT Ticket + SaveChanges
+    API->>API: TicketOpenedDomainEvent
+    Note over API,Hub: Immediate path (bucket: ticket)
+    API->>Hub: NotifyBucketAsync(tenant, Ticket)
     Hub->>TabA: PushUpdate
     Hub->>TabB: PushUpdate
+    Note over TabC: No push — different bucket
     API->>Q: Enqueue change envelope (Pending)
-    TabA->>API: GET /api/v1/items (refresh)
-    TabB->>API: GET /api/v1/items (refresh)
+    TabA->>API: GET /api/v1/tickets/{id} (row patch)
+    TabB->>API: GET /api/v1/tickets/{id} (row patch)
 
-  Note over W,Redis: Background path (~1s)
+    Note over W,Redis: Background path (~1s)
     W->>Q: Claim batch
-    W->>DB: Load item DTO
+    W->>DB: Load ticket DTO
     W->>Redis: Upsert topic cache
-    W->>Hub: NotifyTenantAsync(tenant:1)
-    Hub->>TabA: PushUpdate (debounced client-side)
-    Hub->>TabB: PushUpdate
+    W->>Hub: NotifyBucketAsync(tenant, Ticket)
 ```
+
+Queues follow the same pattern with `TopicBucket.Queue` and `/api/v1/queues`.
+
+**Ticket workflow events** (assign, comment, status change) also enqueue and push on the `ticket` bucket.
 
 ## Client behavior
 
-1. On Items page load → connect to `/hubs/push?access_token=...`
-2. Hub adds connection to group `tenant:{tenantId}`
-3. `FindAndSubscribe` registers Redis subscription (for filtered cache snapshots)
-4. On `PushUpdate` → debounced refresh of page 1 (newest items first)
-5. Stale HTTP responses are ignored if a newer refresh is in flight
+1. On Tickets or Queues page load → connect to `/hubs/push?access_token=...`
+2. `FindAndSubscribe` with bucket + tenant filter; connection joins `tenant:{id}:bucket:{ticket|queue}`
+3. On `PushUpdate` for matching bucket:
+   - **Delete** — remove row from table state
+   - **Upsert** — `GET` single entity, patch row in place (no full list refetch)
+4. New rows on page 1 insert sorted newest-first; remote changes show red **flash icon** (other sessions only)
+5. Selected ticket detail panel refreshes when push targets the open ticket id
 6. Header shows **signalr · live** status pill (green dot when connected)
+
+Details: [client-development.md](client-development.md)
 
 ## SignalR groups vs connection IDs
 
-Early versions targeted individual `connectionId` values stored in Redis. Reconnects (background tabs, network blips) could leave stale IDs. **Tenant groups** ensure every live connection for a tenant receives pushes regardless of subscription record state.
+Early versions targeted individual `connectionId` values stored in Redis. Reconnects could leave stale IDs. **Bucket-scoped tenant groups** ensure every live connection subscribed to that bucket receives pushes. ADR [004](adr/004-signalr-tenant-groups.md) (amended by [005](adr/005-multi-bucket-real-time-sync.md)).
 
 ## Redis responsibilities
 
 | Key pattern | Role |
 |-------------|------|
 | `{tenantId}:livesync:subs:*` | Subscription registry |
-| `{tenantId}:livesync:topics:bucket:*` | Active filter topics |
+| `{tenantId}:livesync:topics:bucket:*` | Active filter topics per bucket |
 | Topic hash keys | Cached DTO snapshots per filter |
 | SignalR backplane | Cross-process hub messaging (API ↔ Worker) |
 
@@ -89,13 +97,13 @@ Shared channel prefix: `LiveSync` (see `LiveSyncSignalR.RedisChannelPrefix`).
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `livesync.changes.processed` | Counter | Successful queue processing |
-| `livesync.changes.failed` | Counter | Retriable failures |
-| `livesync.changes.dead_lettered` | Counter | Moved to dead-letter |
-| `livesync.changes.processing_duration_ms` | Histogram | Per-entry processing time |
-| `livesync.signalr.pushes` | Counter | Push notifications sent |
-| `livesync.change_queue.depth` | Gauge | Pending entries (all tenants) |
-| `livesync.change_queue.dead_letter_depth` | Gauge | Dead-letter entries |
+| `livesync_changes_processed` | Counter | Successful queue processing |
+| `livesync_changes_failed` | Counter | Retriable failures |
+| `livesync_changes_dead_lettered` | Counter | Moved to dead-letter |
+| `livesync_changes_processing_duration_ms` | Histogram | Per-entry processing time |
+| `livesync_signalr_pushes` | Counter | Push notifications sent |
+| `livesync_change_queue_depth` | Gauge | Pending entries (all tenants) |
+| `livesync_change_queue_dead_letter_depth` | Gauge | Dead-letter entries |
 
 Scrape `/metrics` on API (`:5252`) and Worker (`:5260`). See README for Prometheus/Grafana setup.
 
@@ -103,11 +111,12 @@ Scrape `/metrics` on API (`:5252`) and Worker (`:5260`). See README for Promethe
 
 | Symptom | Likely cause |
 |---------|----------------|
-| Creator sees item, others don't | SignalR offline; check status pill |
-| One user always behind | Fixed: stale fetch race + worker-only push |
+| Creator sees ticket, others don't | SignalR offline; check status pill |
+| Queues tab updates on Ticket change | Old client build; bucket filter missing |
+| One user always behind | Worker not running; check queue depth |
 | Nothing live at all | Redis down; Worker not running |
-| Only works for one user | Tab not in tenant group; re-login |
 | Queue depth growing | Worker stopped or processing errors; check dead-letter count |
 | Dead-letter count rising | Downstream Redis/DB errors; inspect worker logs |
+| Detail panel stale after push | Selected ticket id mismatch; check `handlePushUpdate` |
 
-See [demo-walkthrough.md](demo-walkthrough.md) for hands-on verification.
+See [troubleshooting.md](troubleshooting.md) and [demo-walkthrough.md](demo-walkthrough.md).

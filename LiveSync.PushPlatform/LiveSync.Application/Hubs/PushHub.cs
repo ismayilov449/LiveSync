@@ -2,6 +2,7 @@
 using LiveSync.Application.Configuration;
 using LiveSync.Application.RealTimeSync.Contracts;
 using LiveSync.Application.RealTimeSync.Subscriptions;
+using LiveSync.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
@@ -17,8 +18,9 @@ public sealed class PushHub(
     public async Task<FindAndSubscribeResponse> FindAndSubscribe(FindAndSubscribeRequest request)
     {
         var tenantId = userContext.TenantId;
+        var bucket = Enum.Parse<TopicBucket>(request.Bucket, ignoreCase: true);
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, PushHubGroups.Tenant(tenantId));
+        await Groups.AddToGroupAsync(Context.ConnectionId, PushHubGroups.TenantBucket(tenantId, bucket));
 
         var response = await subscriptionManager.FindAndSubscribeAsync(
             tenantId,
@@ -28,15 +30,6 @@ public sealed class PushHub(
             request.Filter);
 
         return response;
-    }
-
-    public override async Task OnConnectedAsync()
-    {
-        var tenantId = ResolveTenantId();
-        if (tenantId > 0)
-            await Groups.AddToGroupAsync(Context.ConnectionId, PushHubGroups.Tenant(tenantId));
-
-        await base.OnConnectedAsync();
     }
 
     public Task Unsubscribe(string subscriptionId)
@@ -50,7 +43,13 @@ public sealed class PushHub(
         var tenantId = ResolveTenantId();
         if (tenantId > 0)
         {
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, PushHubGroups.Tenant(tenantId));
+            foreach (TopicBucket bucket in Enum.GetValues<TopicBucket>())
+            {
+                await Groups.RemoveFromGroupAsync(
+                    Context.ConnectionId,
+                    PushHubGroups.TenantBucket(tenantId, bucket));
+            }
+
             await subscriptionManager.RemoveConnectionAsync(Context.ConnectionId, tenantId);
         }
 

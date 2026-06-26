@@ -1,18 +1,19 @@
 # Solution architecture — LiveSync
 
-This document is written for **technical leads, solution architects, and interviewers** who want the “why” behind the system — not only the “how” in code.
+This document is written for **technical leads, solution architects, and interviewers** who want the "why" behind the system — not only the "how" in code.
 
 ---
 
 ## Executive summary
 
-LiveSync is a **multi-tenant B2B SaaS reference architecture** that separates:
+LiveSync is a **multi-tenant B2B support desk SaaS reference architecture** that separates:
 
 | Concern | Approach |
 |---------|----------|
 | **Tenant isolation** | Database per tenant + control plane |
-| **Write model** | CQRS + domain events |
-| **Real-time UX** | SignalR tenant groups + outbox change queue |
+| **Business domain** | Support Desk — Queues + Tickets (DDD aggregates) |
+| **Write model** | CQRS + domain events + status machine invariants |
+| **Real-time UX** | Bucket-scoped SignalR groups + outbox change queue |
 | **Scale path** | Stateless API, horizontal worker pool, Redis backplane |
 | **Operations** | Health probes, Prometheus metrics, OTLP, structured logs, CI |
 | **API platform** | Per-tenant rate limits, idempotency, audit log, tenant lifecycle |
@@ -30,17 +31,19 @@ Who uses the system and what it integrates with.
 C4Context
     title System context — LiveSync
 
-    Person(admin, "Tenant admin", "Manages users, audit, lifecycle")
-    Person(user, "Tenant user", "Creates and edits items")
+    Person(admin, "Tenant admin", "Assigns agents, manages queues, audit, lifecycle")
+    Person(agent, "Support agent", "Opens tickets, comments, advances workflow")
+    Person(reporter, "Tenant user", "Reports issues, collaborates on tickets")
 
-    System(livesync, "LiveSync", "Multi-tenant item platform with live sync")
+    System(livesync, "LiveSync", "Multi-tenant support desk with live sync")
 
     System_Ext(sql, "SQL Server", "Control plane + tenant databases")
     System_Ext(redis, "Redis", "Cache, subscriptions, SignalR backplane")
     System_Ext(obs, "Observability", "Prometheus, Grafana, OTLP collector")
 
     Rel(admin, livesync, "HTTPS + WSS")
-    Rel(user, livesync, "HTTPS + WSS")
+    Rel(agent, livesync, "HTTPS + WSS")
+    Rel(reporter, livesync, "HTTPS + WSS")
     Rel(livesync, sql, "Reads/writes")
     Rel(livesync, redis, "Pub/sub, cache")
     Rel(livesync, obs, "Metrics + traces")
@@ -56,11 +59,11 @@ C4Container
 
     Person(user, "User", "Browser")
 
-    Container(spa, "React SPA", "TypeScript, Vite", "Items UI + admin console + SignalR client")
+    Container(spa, "React SPA", "TypeScript, Vite", "Tickets + Queues UI, admin console, SignalR client")
     Container(api, "LiveSync.API", ".NET 10", "REST, auth, lifecycle, audit, SignalR hub")
     Container(worker, "LiveSync.Worker", ".NET 10", "Change detection, dead-letter, expiry")
     ContainerDb(cp, "Control plane DB", "SQL Server", "Tenants, users, roles, audit")
-    ContainerDb(tenant, "Tenant DBs", "SQL Server", "Items, queue, idempotency")
+    ContainerDb(tenant, "Tenant DBs", "SQL Server", "Queues, tickets, comments, outbox, idempotency")
     ContainerDb(redis, "Redis", "Redis", "Subscriptions, hub backplane")
     Container(obs, "Observability stack", "Docker profile", "Prometheus, Grafana, OTLP")
 
@@ -83,13 +86,13 @@ C4Container
 flowchart TB
     subgraph API["LiveSync.API"]
         MW[Middleware pipeline<br/>Auth, tenant status, errors, rate limit]
-        CTRL[Controllers v1<br/>Auth, Items, Tenants, Audit, Operations]
+        CTRL[Controllers v1<br/>Auth, Tickets, Queues, Tenants, Audit, Operations]
         HUB[PushHub]
         CQRS[MediatR pipeline<br/>Commands / Queries / Events]
     end
 
     subgraph Application
-        HANDLERS[Item command handlers]
+        HANDLERS[Ticket + Queue command handlers]
         EVENTS[Domain event handlers<br/>Enqueue + Notify tenant]
         SUBS[SubscriptionManager]
         METRICS[LiveSyncMetrics]
@@ -125,12 +128,13 @@ flowchart TB
 |-----------|--------|---------------------------|
 | **Isolation** | No cross-tenant data leaks | Separate DB per tenant; JWT `tenant_id`; middleware validation |
 | **Consistency** | Users see fresh data | API immediate push + worker outbox for cache alignment |
+| **Domain integrity** | Valid ticket lifecycle | Status transitions in `Ticket` aggregate; queue deactivate rules |
 | **Availability** | Survive single process failure | API and Worker separable; Redis backplane; health endpoints |
 | **Scalability** | More tenants / concurrent users | Stateless API replicas; worker pool; DB-per-tenant horizontal data partition |
 | **Security** | Least privilege | RBAC; JWT; rate-limited auth; per-tenant API limits; ProblemDetails errors |
 | **Maintainability** | Clear boundaries | Clean architecture layers; ADRs; integration tests |
 | **Observability** | Debug production issues | Serilog + correlation ID; Prometheus custom metrics; OTLP export |
-| **Governance** | Audit and lifecycle | Audit log; suspend/reactivate; idempotent creates |
+| **Governance** | Audit and lifecycle | Audit log; suspend/reactivate; idempotent ticket open |
 
 ---
 
@@ -140,7 +144,7 @@ flowchart TB
 
 | NFR | Specification |
 |-----|----------------|
-| API item create | Synchronous response &lt; 500 ms (local dev baseline) |
+| API ticket open | Synchronous response &lt; 500 ms (local dev baseline) |
 | Live update latency | API push path: sub-second to other tabs in tenant |
 | Worker poll interval | Configurable (`ChangeDetection:PollIntervalMs`, default 1000 ms) |
 
@@ -162,7 +166,7 @@ flowchart TB
 | Change delivery | Outbox table in tenant DB; worker retries with max retry count |
 | Dead letter | Entries marked `DeadLetter` after `MaxRetries` (default 5) |
 | Stale subscriptions | TTL + renewal from client; expiry hosted service |
-| Idempotency | `Idempotency-Key` on item create prevents duplicate resources |
+| Idempotency | `Idempotency-Key` on ticket open prevents duplicate resources |
 | SQL transient errors | EF `EnableRetryOnFailure` (3 retries) |
 | Redis transient errors | Polly retry + circuit breaker on Redis operations |
 
@@ -209,9 +213,19 @@ Grouped by delivery wave — all present in the current codebase:
 | Capability | Detail |
 |------------|--------|
 | Per-tenant rate limiting | `RateLimiting:TenantPermitLimit` / `TenantWindowSeconds` |
-| Idempotency | `Idempotency-Key` header on `POST /items` |
+| Idempotency | `Idempotency-Key` header on `POST /tickets` |
 | Audit log | `AuditEvents` table; `GET /api/v1/audit` |
 | Admin SPA | `/admin/*` routes for overview, users, audit, settings |
+| Tenant user list | `GET /api/v1/auth/users` for assignee picker |
+
+### Wave 4 — Support Desk domain
+
+| Capability | Detail |
+|------------|--------|
+| Queue aggregate | Work streams; deactivate blocked when open tickets exist |
+| Ticket aggregate | Status machine; comments as child entities |
+| Workflow API | assign, start-progress, resolve, close |
+| Client UX | Ticket detail panel, assign dropdown, workflow hints, remote push flash |
 
 ---
 
@@ -223,6 +237,8 @@ Grouped by delivery wave — all present in the current codebase:
 | ADR-002 | API + Worker process split | [adr/002-api-worker-split.md](adr/002-api-worker-split.md) |
 | ADR-003 | SQL change queue (outbox) | [adr/003-change-queue-outbox.md](adr/003-change-queue-outbox.md) |
 | ADR-004 | SignalR tenant groups | [adr/004-signalr-tenant-groups.md](adr/004-signalr-tenant-groups.md) |
+| ADR-005 | Multi-bucket real-time sync | [adr/005-multi-bucket-real-time-sync.md](adr/005-multi-bucket-real-time-sync.md) |
+| ADR-006 | Support Desk aggregates | [adr/006-support-desk-aggregates.md](adr/006-support-desk-aggregates.md) |
 
 ---
 
@@ -297,6 +313,7 @@ flowchart LR
 | Redis unavailable | High | Health checks fail; Polly circuit breaker; document dependency |
 | Worker lag | Medium | API immediate push; `livesync_change_queue_depth` metric + admin overview |
 | Dead-letter accumulation | Medium | Dead-letter gauge; operations API; worker logs |
+| Invalid status transition | Medium | Domain methods throw; API returns ProblemDetails |
 | Connection pool exhaustion | Medium | Document pool sizing; shard tenants across SQL instances |
 | Subscription memory growth | Low | TTL expiry service; client renew interval |
 | JWT compromise | High | Short-ish TTL; HTTPS; secrets management in prod |
@@ -321,8 +338,9 @@ flowchart LR
 
 | Priority | Capability | Rationale |
 |----------|------------|-----------|
-| P2 | List users API | Admin Users page is invite-only today |
 | P2 | Platform super-admin | Cross-tenant ops console |
+| P2 | Email / webhook notifications | Alert assignees on new tickets |
+| P3 | SLA timers per queue | Enterprise support desk feature |
 | P3 | Read replicas for tenant DBs | Read scaling |
 | P3 | Feature flags per tenant | Gradual rollout |
 | P3 | Terraform / IaC modules | Repeatable environments |
@@ -338,3 +356,4 @@ flowchart LR
 - [real-time-sync.md](real-time-sync.md) — push pipeline and metrics
 - [demo-walkthrough.md](demo-walkthrough.md) — hands-on validation
 - [resume-bullets.md](resume-bullets.md) — copy-paste CV bullets
+- [adr/006-support-desk-aggregates.md](adr/006-support-desk-aggregates.md) — domain boundaries

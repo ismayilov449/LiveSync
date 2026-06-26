@@ -221,6 +221,24 @@ button, input, select {
 
 .panel + .panel { margin-top: 0.65rem; }
 
+.panel-table {
+  position: relative;
+}
+
+.panel-table-syncing .data-table {
+  opacity: 0.72;
+  transition: opacity 0.15s ease;
+}
+
+.table-sync-hint {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.65rem;
+  margin: 0;
+  font-size: 0.72rem;
+  z-index: 1;
+}
+
 .panel-header {
   margin-bottom: 0.65rem;
 }
@@ -558,6 +576,62 @@ button, input, select {
   opacity: 0.45;
 }
 
+.data-table-selectable tbody tr {
+  cursor: pointer;
+}
+
+.data-table-selectable tbody tr.selected {
+  background: var(--surface-raised);
+}
+
+.ticket-detail h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ticket-description {
+  margin: 0.75rem 0 0;
+  white-space: pre-wrap;
+}
+
+.ticket-comments {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.ticket-comments h4 {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+
+.comment-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.comment-item {
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.comment-item p {
+  margin: 0.35rem 0 0;
+}
+
+.comment-meta {
+  font-size: 0.85em;
+}
+
 .data-table code {
   font-family: var(--font-mono);
   font-size: 0.88em;
@@ -573,6 +647,39 @@ button, input, select {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+.remote-col {
+  width: 1.75rem;
+  padding-left: 0.15rem !important;
+  padding-right: 0.35rem !important;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.remote-push-flash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f87171;
+}
+
+.remote-push-flash-icon {
+  display: block;
+  filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.85));
+  animation: remote-push-flash 1.1s ease-in-out infinite;
+}
+
+@keyframes remote-push-flash {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .row-gap {

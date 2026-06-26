@@ -1,7 +1,7 @@
 <p align="center">
   <strong>LiveSync</strong><br/>
-  Multi-tenant SaaS platform with database-per-tenant isolation,<br/>
-  CQRS, real-time SignalR sync, and tenant admin console.
+  Multi-tenant SaaS **support desk** with database-per-tenant isolation,<br/>
+  DDD aggregates (Queues + Tickets), CQRS, real-time SignalR sync, and tenant admin console.
 </p>
 
 <p align="center">
@@ -48,14 +48,14 @@
 | Question | Answer |
 |----------|--------|
 | **What is it?** | A portfolio-grade **multi-tenant SaaS backend** with a React SPA — not a tutorial todo app. |
-| **What problem does it solve?** | Organizations need **isolated data** *and* **live UI updates** when any user in the org changes data. |
+| **What problem does it solve?** | Teams need **isolated help desks** *and* **live ticket updates** when anyone opens, comments, or changes status. |
 | **How is data isolated?** | **Database per tenant** + control plane for users/tenants/audit. |
-| **How is live sync done?** | Domain events → change queue → worker → Redis → **SignalR push** to all users in the tenant. |
+| **How is live sync done?** | Domain events → change queue → worker → Redis → **bucket-scoped SignalR push** (Tickets vs Queues). |
 | **What else is included?** | Tenant admin console, audit log, suspend/reactivate, idempotency, per-tenant rate limits, Prometheus metrics. |
-| **What should I run first?** | [Quick start](#quick-start) → [Scenario: two users, one tenant](#scenario-two-users-one-tenant-live-sync) |
+| **What should I run first?** | [Quick start](#quick-start) → [Scenario: two users, one tenant](#scenario-two-users-one-tenant-live-sync) · [Glossary](docs/glossary.md) |
 
 **30-second pitch:**  
-*Register creates a new organization (tenant) with its own SQL database. Users in that org share items. When anyone creates or edits an item, every open browser tab in the same tenant refreshes automatically. Tenant admins manage users, audit, queue health, and organization lifecycle from the Admin console.*
+*Register creates a new organization (tenant) with its own SQL database. Users share **queues** and **tickets** with a strict status lifecycle. Comments live inside the ticket aggregate. When anyone changes a ticket, subscribed tabs patch in place via SignalR. Tenant admins manage users, audit, queue health, and organization lifecycle.*
 
 ---
 
@@ -63,19 +63,25 @@
 
 ### Architecture overview
 
-<p align="center">
-  <img src="docs/assets/architecture-hero.png" alt="LiveSync architecture — React SPA, API, Worker, SQL Server, Redis, SignalR" width="800"/>
-</p>
+```mermaid
+flowchart LR
+    SPA[React SPA] --> API[LiveSync.API]
+    API --> CP[(Control Plane)]
+    API --> TDB[(Tenant DBs)]
+    API --> Redis[(Redis)]
+    Worker[LiveSync.Worker] --> TDB
+    Worker --> Redis
+    Worker -.->|SignalR via Redis| API
+    SPA <-->|WSS bucket push| API
+```
 
 ### Real-time sync — two users, same tenant
 
-<p align="center">
-  <img src="docs/assets/demo-two-tabs.png" alt="Two browser tabs showing live item sync between Admin and Member" width="800"/>
-</p>
+Record a GIF for GitHub: follow [docs/demo-walkthrough.md](docs/demo-walkthrough.md) Scenario 2, save as `docs/assets/demo-realtime-sync.gif`, then add:
 
-> **Record your own GIF** (recommended for GitHub wow-factor): follow [docs/demo-walkthrough.md](docs/demo-walkthrough.md) Scenario 2, save as `docs/assets/demo-realtime-sync.gif`, then add:
->
-> `![Real-time sync demo](docs/assets/demo-realtime-sync.gif)`
+`![Real-time sync demo](docs/assets/demo-realtime-sync.gif)`
+
+Static screenshots: see [docs/assets/README.md](docs/assets/README.md).
 
 ---
 
@@ -90,6 +96,7 @@ Most CRUD demos stop at REST + React. LiveSync goes further to show patterns use
 5. **Operational maturity** — Prometheus metrics, OTLP, health checks, structured logging, integration tests.
 6. **API platform basics** — rate limits, idempotency, audit log, tenant lifecycle.
 7. **Tenant admin UX** — console for users, audit, queue stats, suspend/reactivate.
+8. **DDD support desk** — Queue and Ticket aggregates with status machine, comments inside the ticket, and cross-aggregate validation.
 
 If you're evaluating this repo for a role: start with the [demo walkthrough](docs/demo-walkthrough.md), then skim [architecture.md](docs/architecture.md).
 
@@ -140,8 +147,8 @@ flowchart TB
 |-----------|----------------|----------|
 | **LiveSync.API** | REST `/api/v1/*`, JWT auth, React SPA, SignalR `/hubs/push`, immediate tenant push, audit/lifecycle/ops APIs, `/metrics` | Run change-detection loop (by default) |
 | **LiveSync.Worker** | Poll `ChangeQueue`, dead-letter after max retries, update Redis caches, tenant SignalR push, subscription TTL cleanup, `/metrics` on `:5260` | Serve HTTP API to browsers |
-| **Control plane DB** | `Tenants`, ASP.NET Identity, `AuditEvents` | Store business items |
-| **Tenant DBs** | `Items`, `ChangeQueue`, `IdempotencyRecords` | Store users from other tenants |
+| **Control plane DB** | `Tenants`, ASP.NET Identity, `AuditEvents` | Store business tickets/queues |
+| **Tenant DBs** | `Queues`, `Tickets`, `TicketComments`, `ChangeQueue`, `IdempotencyRecords` | Store users from other tenants |
 | **Redis** | Subscription registry, topic cache, SignalR scale-out backplane (Polly resilience) | Primary persistence |
 
 ### Layering (Clean Architecture)
@@ -158,9 +165,9 @@ flowchart LR
 
 | Layer | Examples |
 |-------|----------|
-| **Domain** | `Item`, `ItemCreatedDomainEvent`, repository interfaces |
-| **Application** | `CreateItemCommandHandler`, `SubscriptionManager`, `IRealTimeNotifier`, `LiveSyncMetrics` |
-| **Infrastructure** | `ItemRepository`, `RedisSubscriptionStore`, `AuditService`, `SqlIdempotencyStore` |
+| **Domain** | `Queue`, `Ticket` (+ `TicketComment` entity), domain events, status machine |
+| **Application** | `OpenTicketCommandHandler`, `AssignTicketCommandHandler`, `SubscriptionManager`, `IRealTimeNotifier`, `LiveSyncMetrics` |
+| **Infrastructure** | `TicketRepository`, `QueueRepository`, `RedisSubscriptionStore`, `AuditService`, `SqlIdempotencyStore` |
 | **API** | Controllers, middleware, JWT, SPA static files |
 | **Worker** | Hosted services for change detection and queue metrics |
 
@@ -170,7 +177,7 @@ flowchart LR
 
 This is the **most interesting part** of the codebase.
 
-### What happens when a user creates an item?
+### What happens when a user opens a ticket?
 
 ```mermaid
 sequenceDiagram
@@ -183,13 +190,13 @@ sequenceDiagram
     participant R as Redis
     participant SR as SignalR
 
-    UI->>API: POST /api/v1/items
-    API->>DB: Save item
-    API->>SR: PushUpdate → group tenant:{id}
-    SR-->>UI: All tabs in tenant refresh
-    API->>Q: Enqueue ItemCreated (Pending)
+    UI->>API: POST /api/v1/tickets
+    API->>DB: Save ticket
+    API->>SR: PushUpdate → group tenant:{id}:bucket:ticket
+    SR-->>UI: Subscribed tabs patch row
+    API->>Q: Enqueue TicketOpened (Pending)
     W->>Q: Poll & claim batch
-    W->>DB: Read item DTO
+    W->>DB: Read ticket DTO
     W->>R: Update subscription cache
     W->>SR: PushUpdate (consistency path)
     Note over Q: On max retries → DeadLetter
@@ -202,7 +209,7 @@ sequenceDiagram
 | **API immediate** | ~milliseconds | Users see changes instantly |
 | **Worker queue** | ~1 second poll | Redis cache + subscription consistency |
 
-Connections join SignalR group `tenant:{tenantId}` on hub connect — so **every user in the org** gets updates, not just the user who made the change.
+Connections join SignalR group `tenant:{tenantId}:bucket:{ticket|queue}` on subscribe — Tickets page ignores Queue-only pushes. See [ADR 005](docs/adr/005-multi-bucket-real-time-sync.md).
 
 Deep dive: [docs/real-time-sync.md](docs/real-time-sync.md)
 
@@ -214,10 +221,11 @@ Deep dive: [docs/real-time-sync.md](docs/real-time-sync.md)
 
 ```
 LiveSync_ControlPlane          LiveSync_Tenant_1        LiveSync_Tenant_2
-├── Tenants                    ├── Items                ├── Items
-├── AspNetUsers (TenantId)     ├── ChangeQueue          ├── ChangeQueue
-├── AspNetRoles                └── IdempotencyRecords   └── IdempotencyRecords
-└── AuditEvents
+├── Tenants                    ├── Queues               ├── Queues
+├── AspNetUsers (TenantId)     ├── Tickets              ├── Tickets
+├── AspNetRoles                ├── TicketComments       ├── TicketComments
+└── AuditEvents                ├── ChangeQueue          ├── ChangeQueue
+                               └── IdempotencyRecords   └── IdempotencyRecords
 ```
 
 | Concept | Detail |
@@ -225,8 +233,8 @@ LiveSync_ControlPlane          LiveSync_Tenant_1        LiveSync_Tenant_2
 | **Register** | `POST /api/v1/auth/register` → **new tenant** + `TenantAdmin` + new database |
 | **Invite** | `POST /api/v1/auth/users` → new user in **caller's tenant** (admin only) |
 | **Suspend** | `POST /api/v1/tenants/suspend` → blocks API access (403); reactivate still allowed |
-| **Item IDs** | Per-tenant — item `5` in tenant 1 ≠ item `5` in tenant 2 |
-| **Root item** | Auto-created per tenant as hierarchy parent |
+| **Ticket IDs** | Per-tenant — ticket `5` in tenant 1 ≠ ticket `5` in tenant 2 |
+| **Default queue** | Auto-created per tenant: **General** |
 
 ### Request pipeline
 
@@ -257,11 +265,13 @@ Tenant administrators (`TenantAdmin` role) see an **Admin** link in the header. 
 | Route | Purpose |
 |-------|---------|
 | `/admin/overview` | Organization name, status, change-queue pending / dead-letter counts |
-| `/admin/users` | Invite users to the tenant |
+| `/admin/users` | Invite users; list available via `GET /auth/users` for assignee picker |
 | `/admin/audit` | Paginated audit log (create, update, delete, suspend, etc.) |
 | `/admin/settings` | Suspend or reactivate the organization (with confirmation) |
 
 **Account** (`/profile`) shows the signed-in user's profile, organization name, and tenant status — available to all authenticated users.
+
+**Data pages:** `/tickets` and `/queues` — support desk with SignalR live status, row-level push, remote-change flash icons.
 
 `GET /api/v1/auth/me` returns `tenantName` and `tenantStatus` for the sidebar and status chips.
 
@@ -269,15 +279,15 @@ Tenant administrators (`TenantAdmin` role) see an **Admin** link in the header. 
 
 ## Security & RBAC
 
-| Role | Items read/create/rename | Delete / move / deactivate | Invite users | Admin console |
-|------|------------------------|----------------------------|--------------|---------------|
+| Role | Tickets (open, comment, workflow) | Assign / delete ticket | Invite users | Admin console |
+|------|-----------------------------------|------------------------|--------------|---------------|
 | **TenantAdmin** | ✅ | ✅ | ✅ | ✅ |
 | **TenantUser** | ✅ | ❌ | ❌ | ❌ |
 
 - **Auth:** ASP.NET Identity + JWT (`tenant_id`, `user_id`, role claims)
 - **API versioning:** `/api/v1/...` (+ legacy `/api/...` aliases)
 - **Rate limiting:** auth endpoints (30/min per IP); authenticated API (200/min per tenant, configurable)
-- **Idempotency:** `Idempotency-Key` header on `POST /items`
+- **Idempotency:** `Idempotency-Key` header on `POST /tickets`
 - **Suspended tenants:** 403 on all routes except `POST /api/v1/tenants/reactivate`
 - **Errors:** RFC 7807 ProblemDetails
 - **Dev only:** header auth fallback, `POST /api/v1/auth/dev/users` — disabled outside Development
@@ -341,7 +351,7 @@ This repo is structured to demonstrate **solution architect** thinking — not o
 - **Multi-tenant isolation** — database-per-tenant with control plane; JWT tenant boundary; ADR-documented trade-offs
 - **Split deployment** — stateless API + background Worker; independent scaling and failure domains
 - **Reliable real-time** — transactional outbox + dead-letter + immediate API push + worker consistency path
-- **Collaborative UX** — SignalR tenant groups over Redis backplane (scale-out ready)
+- **Collaborative UX** — bucket-scoped SignalR groups (Tickets vs Queues)
 - **Operability** — Prometheus metrics, OTLP hooks, health probes, structured logging, CI with integration tests
 - **Governance** — versioned API, RBAC, per-tenant rate limits, audit log, idempotency, tenant lifecycle, admin console
 
@@ -374,9 +384,10 @@ LiveSync.PushPlatform/
 ├── LiveSync.API/                 # REST API, auth middleware, React SPA (client/)
 │   └── client/                   # Vite + React source (builds to wwwroot/)
 ├── LiveSync.Worker/              # Change detection, dead-letter, subscription expiry
-├── LiveSync.Tests/               # Unit tests (8)
-├── LiveSync.IntegrationTests/    # Testcontainers + WebApplicationFactory (11)
-├── docs/                         # Architecture, walkthrough, ADRs, assets
+├── LiveSync.Tests/               # Unit tests (10)
+├── LiveSync.IntegrationTests/    # Testcontainers + WebApplicationFactory (14)
+├── docs/                         # Architecture, walkthrough, ADRs, glossary
+├── scripts/                      # dev.ps1, dev.sh quick-start
 ├── observability/                # Prometheus, Grafana, OTLP collector compose
 ├── docker-compose.yml            # SQL Server + Redis (+ full profile)
 ├── Dockerfile.api
@@ -400,6 +411,10 @@ git clone https://github.com/ismayilov449/LiveSync.git
 cd LiveSync/LiveSync.PushPlatform
 docker compose up -d
 ```
+
+**Or use the dev script:** `.\scripts\dev.ps1` (Windows) / `./scripts/dev.sh` (Linux/macOS) — starts Docker, builds client, launches API + Worker.
+
+> **Troubleshooting:** [docs/troubleshooting.md](docs/troubleshooting.md) · **Docker config:** copy `LiveSync.API/appsettings.Development.docker.example.json` if needed.
 
 ### 2. Build frontend (required — `wwwroot/` is not committed)
 
@@ -464,26 +479,27 @@ Full scripted guide: **[docs/demo-walkthrough.md](docs/demo-walkthrough.md)**
 1. Login as **admin** in a normal browser tab.
 2. **Admin → Users** — invite a member user.
 3. Open **incognito** → login as member.
-4. Both tabs → **Items** → confirm **signalr · live** (green dot).
-5. Create item in either tab → **both tabs update without refresh**.
+4. Both tabs → **Tickets** → confirm **signalr · live** (green dot).
+5. Open a ticket or add a comment in either tab → **both Tickets tabs update** (row patch).
+6. Open **Queues** in one tab, **Tickets** in the other — ticket changes do **not** refresh Queues (bucket isolation).
 
-This proves: shared tenant DB + tenant SignalR group + real-time list refresh.
+This proves: shared tenant DB + bucket-scoped SignalR + row-level client patch.
 
 ### Scenario: Tenant isolation
 
 1. **Register** a new organization (creates tenant 2).
-2. Items from tenant 1 are invisible in tenant 2.
+2. Tickets from tenant 1 are invisible in tenant 2.
 
 ### Scenario: RBAC
 
-- Member can create/rename items.
-- Member cannot delete — buttons hidden; API returns 403.
+- Member can open tickets, comment, and advance workflow (start/resolve/close).
+- Member cannot assign or delete tickets — admin only.
 - Member does not see **Admin** nav.
 
 ### Scenario: Tenant admin
 
-1. **Admin → Overview** — queue pending / dead-letter (with Worker running).
-2. **Admin → Audit** — see item create/update entries.
+1. **Admin → Overview** — change-queue pending / dead-letter (with Worker running).
+2. **Admin → Audit** — see ticket open/assign/comment entries.
 3. **Admin → Settings** — suspend tenant, then reactivate.
 
 ---
@@ -499,20 +515,34 @@ Base path: `/api/v1` (aliases: `/api/...`)
 | `POST` | `/auth/register` | Anonymous | New tenant + admin |
 | `POST` | `/auth/login` | Anonymous | JWT token |
 | `POST` | `/auth/users` | TenantAdmin | Invite user to tenant |
+| `GET` | `/auth/users` | Bearer | List users in caller's tenant |
 | `GET` | `/auth/me` | Bearer | Profile, roles, `tenantName`, `tenantStatus` |
 | `POST` | `/auth/dev/users` | Anonymous | Dev only — create user for any tenant |
 
-### Items
+### Tickets
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/items` | Bearer | Paginated list. Query: `page`, `pageSize`, `parentId` |
-| `GET` | `/items/{id}` | Bearer | Single item |
-| `POST` | `/items` | Bearer | Create item. Optional header: `Idempotency-Key` |
-| `PUT` | `/items/{id}` | Bearer | Rename |
-| `PUT` | `/items/{id}/parent` | TenantAdmin | Move |
-| `POST` | `/items/{id}/deactivate` | TenantAdmin | Soft delete |
-| `DELETE` | `/items/{id}` | TenantAdmin | Hard delete |
+| `GET` | `/tickets` | Bearer | Paginated list. Query: `page`, `pageSize`, `queueId`, `status` |
+| `GET` | `/tickets/{id}` | Bearer | Single ticket with comments |
+| `POST` | `/tickets` | Bearer | Open ticket. Optional header: `Idempotency-Key` |
+| `PUT` | `/tickets/{id}/assign` | TenantAdmin | Assign to user |
+| `POST` | `/tickets/{id}/comments` | Bearer | Add comment |
+| `POST` | `/tickets/{id}/start-progress` | Bearer | Start work |
+| `POST` | `/tickets/{id}/resolve` | Bearer | Resolve |
+| `POST` | `/tickets/{id}/close` | Bearer | Close |
+| `DELETE` | `/tickets/{id}` | TenantAdmin | Hard delete |
+
+### Queues
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/queues` | Bearer | Paginated list. Query: `page`, `pageSize` |
+| `GET` | `/queues/{id}` | Bearer | Single queue |
+| `POST` | `/queues` | Bearer | Create queue |
+| `PUT` | `/queues/{id}` | Bearer | Rename |
+| `POST` | `/queues/{id}/deactivate` | TenantAdmin | Deactivate (blocked if open tickets) |
+| `DELETE` | `/queues/{id}` | TenantAdmin | Hard delete |
 
 ### Tenants (lifecycle)
 
@@ -541,22 +571,28 @@ Base path: `/api/v1` (aliases: `/api/...`)
 ## Testing
 
 ```bash
-# Unit tests (8)
+# Unit tests (10)
 dotnet test LiveSync.Tests
 
-# Integration tests (11 — Docker required for Testcontainers)
+# Integration tests (14 — Docker required for Testcontainers)
 dotnet test LiveSync.IntegrationTests
+
+# Client unit tests (Vitest — 7)
+cd LiveSync.API/client && npm test
 ```
+
+**Totals:** 10 unit + 14 integration + 7 client = **31 automated tests**.
 
 **Integration coverage highlights:**
 
 - Auth register/login
-- Tenant isolation (items not visible across tenants)
-- RBAC (member cannot delete or invite; admin can)
-- SignalR `PushUpdate` after item creation
+- Tenant isolation (tickets and queues not visible across tenants)
+- RBAC (member cannot assign/delete tickets; admin can; list users in tenant)
+- SignalR `PushUpdate` after ticket open
+- Bucket-scoped push (Queues tab unaffected by Ticket changes)
 - Tenant suspend/reactivate (403 while suspended)
-- Idempotency key replay returns same item id
-- Audit log entry on item create
+- Idempotency key replay returns same ticket id
+- Audit log entry on ticket open
 - `/metrics` endpoint available
 
 CI runs on every push to `main` — see badge at top.
@@ -603,7 +639,7 @@ API: http://localhost:5252
 | `RateLimiting:TenantPermitLimit` | API requests per tenant per window (default 200) |
 | `RateLimiting:TenantWindowSeconds` | Rate limit window (default 60) |
 
-Never commit production secrets. See `appsettings.Development.json` for local patterns.
+Never commit production secrets. See `appsettings.Development.json` or copy `appsettings.Development.docker.example.json` for Docker. [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ---
 
@@ -614,7 +650,8 @@ Never commit production secrets. See `appsettings.Development.json` for local pa
 | Tenant isolation | Database per tenant | [ADR 001](docs/adr/001-database-per-tenant.md) |
 | Process split | API + Worker | [ADR 002](docs/adr/002-api-worker-split.md) |
 | Reliable sync | SQL change queue (outbox) + dead-letter | [ADR 003](docs/adr/003-change-queue-outbox.md) |
-| Live broadcast | SignalR tenant groups | [ADR 004](docs/adr/004-signalr-tenant-groups.md) |
+| Live broadcast | SignalR bucket groups (ADR 004, amended by 005) | [ADR 004](docs/adr/004-signalr-tenant-groups.md), [ADR 005](docs/adr/005-multi-bucket-real-time-sync.md) |
+| Support Desk domain | Queue + Ticket aggregates | [ADR 006](docs/adr/006-support-desk-aggregates.md) |
 | Full architecture view | C4, NFRs, platform waves | [solution-architecture.md](docs/solution-architecture.md) |
 | CQRS | MediatR commands/queries | [architecture.md](docs/architecture.md) |
 | Real-time | Outbox + worker + SignalR | [real-time-sync.md](docs/real-time-sync.md) |
@@ -628,12 +665,16 @@ Never commit production secrets. See `appsettings.Development.json` for local pa
 |----------|----------|
 | [docs/solution-architecture.md](docs/solution-architecture.md) | **Solution architect view** — C4, NFRs, platform waves, risks |
 | [docs/resume-bullets.md](docs/resume-bullets.md) | CV / LinkedIn copy-paste bullets |
-| [docs/demo-walkthrough.md](docs/demo-walkthrough.md) | **Start here** — step-by-step demos (7 scenarios) |
+| [docs/demo-walkthrough.md](docs/demo-walkthrough.md) | **Start here** — step-by-step demos (8 scenarios, support desk workflow) |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Common setup failures and fixes |
+| [docs/client-development.md](docs/client-development.md) | React SPA, SignalR hooks, push row-patch |
+| [docs/extending-the-platform.md](docs/extending-the-platform.md) | Checklist for adding new aggregates |
+| [docs/glossary.md](docs/glossary.md) | Terminology reference |
 | [docs/architecture.md](docs/architecture.md) | Components, middleware, SPA routes, cross-cutting |
 | [docs/tenancy.md](docs/tenancy.md) | Multi-tenant model, lifecycle, register vs invite |
-| [docs/real-time-sync.md](docs/real-time-sync.md) | Push pipeline, dead-letter, metrics |
+| [docs/real-time-sync.md](docs/real-time-sync.md) | Push pipeline, buckets, dead-letter, metrics |
 | [docs/adr/001-database-per-tenant.md](docs/adr/001-database-per-tenant.md) | Why separate DBs per tenant |
-| [docs/adr/](docs/adr/) | All ADRs (002–004: worker split, outbox, SignalR groups) |
+| [docs/adr/](docs/adr/) | All ADRs (001–006: tenancy, worker, outbox, SignalR, multi-bucket, support desk) |
 | [docs/assets/README.md](docs/assets/README.md) | GIF/screenshot recording guide |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, PR guidelines, doc map |
 
@@ -645,9 +686,9 @@ Never commit production secrets. See `appsettings.Development.json` for local pa
 
 1. [docs/solution-architecture.md](docs/solution-architecture.md) — C4 + NFRs + platform waves
 2. [docs/demo-walkthrough.md](docs/demo-walkthrough.md) — live demo (two users, one tenant)
-3. Skim `CreateItemCommandHandler` → `NotifyTenantItemDomainEventHandler` → `PushHub`
+3. Skim `OpenTicketCommandHandler` → `NotifyTenantTicketDomainEventHandler` → `PushHub`
 4. Review [ADRs](docs/adr/) for decision rationale
-5. Glance at `LiveSync.IntegrationTests/` (11 tests) for proof it works
+5. Glance at `LiveSync.IntegrationTests/` (14 tests) for proof it works
 6. Optional: **Admin → Overview** + http://localhost:5252/metrics
 
 **Talking points:**
@@ -655,7 +696,11 @@ Never commit production secrets. See `appsettings.Development.json` for local pa
 - *"Why database-per-tenant?"* → Strong isolation, per-tenant backup/restore, portfolio ADR.
 - *"Why a worker if API already pushes?"* → Outbox pattern for reliable cache updates, dead-letter visibility, and filtered subscriptions at scale.
 - *"How do you prevent cross-tenant leaks?"* → Separate DB + JWT tenant claim + middleware validation + EF filters.
+- *"Why bucket-scoped SignalR?"* → Queues page shouldn't refresh on Ticket changes; ADR 005.
+- *"How is DDD applied?"* → `Ticket` aggregate owns `TicketComment` entities + status machine; `Queue` is separate aggregate. See [ADR 006](docs/adr/006-support-desk-aggregates.md).
 - *"How do you operate this?"* → Prometheus queue metrics, health probes, suspend/reactivate lifecycle, audit log.
+
+**Glossary:** [docs/glossary.md](docs/glossary.md)
 
 **Clone checklist:**
 

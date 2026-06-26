@@ -1,6 +1,7 @@
 ﻿using LiveSync.Application.Common.Interfaces;
 using LiveSync.Domain.Common;
-using LiveSync.Domain.Entities.ItemAggregate;
+using LiveSync.Domain.Entities.QueueAggregate;
+using LiveSync.Domain.Entities.TicketAggregate;
 using LiveSync.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,7 +23,9 @@ public sealed class AppDbContext : DbContext
             _tenantId = tenantContext.TenantId;
     }
 
-    public DbSet<Item> Items => Set<Item>();
+    public DbSet<Queue> Queues => Set<Queue>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<TicketComment> TicketComments => Set<TicketComment>();
     public DbSet<ChangeQueueEntry> ChangeQueue => Set<ChangeQueueEntry>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
@@ -37,7 +40,10 @@ public sealed class AppDbContext : DbContext
         }
 
         if (_tenantId.HasValue)
-            modelBuilder.Entity<Item>().HasQueryFilter(x => x.TenantId == _tenantId.Value);
+        {
+            modelBuilder.Entity<Queue>().HasQueryFilter(x => x.TenantId == _tenantId.Value);
+            modelBuilder.Entity<Ticket>().HasQueryFilter(x => x.TenantId == _tenantId.Value);
+        }
 
         base.OnModelCreating(modelBuilder);
     }
@@ -59,7 +65,7 @@ public sealed class AppDbContext : DbContext
         if (!_tenantId.HasValue)
             return;
 
-        foreach (var entry in ChangeTracker.Entries<Item>())
+        foreach (var entry in ChangeTracker.Entries<Queue>())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified))
                 continue;
@@ -67,7 +73,19 @@ public sealed class AppDbContext : DbContext
             if (entry.Entity.TenantId != _tenantId.Value)
             {
                 throw new InvalidOperationException(
-                    $"Item tenant id {entry.Entity.TenantId} does not match the active tenant {_tenantId.Value}.");
+                    $"Queue tenant id {entry.Entity.TenantId} does not match the active tenant {_tenantId.Value}.");
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<Ticket>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+                continue;
+
+            if (entry.Entity.TenantId != _tenantId.Value)
+            {
+                throw new InvalidOperationException(
+                    $"Ticket tenant id {entry.Entity.TenantId} does not match the active tenant {_tenantId.Value}.");
             }
         }
     }

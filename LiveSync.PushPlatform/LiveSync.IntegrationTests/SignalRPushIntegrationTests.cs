@@ -1,9 +1,7 @@
 using System.Net.Http.Json;
 using FluentAssertions;
 using LiveSync.API.Controllers;
-using LiveSync.API.Contracts.Items;
 using LiveSync.Application.Common.Interfaces;
-using LiveSync.Application.CQRS.Items.Models;
 using LiveSync.Application.CQRS.RealTimeSync.Commands;
 using MediatR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -15,7 +13,7 @@ namespace LiveSync.IntegrationTests;
 public sealed class SignalRPushIntegrationTests(LiveSyncApiWithPushFactory factory)
 {
     [Fact]
-    public async Task CreateItem_TriggersPushUpdate_OnSubscribedClient()
+    public async Task OpenTicket_TriggersPushUpdate_OnSubscribedClient()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var client = factory.CreateClient();
@@ -48,18 +46,16 @@ public sealed class SignalRPushIntegrationTests(LiveSyncApiWithPushFactory facto
 
         var subscribeResponse = await connection.InvokeAsync<SubscribeResponse>(
             "FindAndSubscribe",
-            new { bucket = "Item", filter = $"item.TenantId == {auth.TenantId}" });
+            new { bucket = "Ticket", filter = $"ticket.TenantId == {auth.TenantId}" });
 
         subscribeResponse.SubscriptionId.Should().NotBeNullOrWhiteSpace();
 
         var authedClient = factory.CreateAuthenticatedClient(auth.AccessToken);
-        var list = await authedClient.GetFromJsonAsync<PagedItemsResponse>("/api/v1/items?page=1&pageSize=20");
-        list.Should().NotBeNull();
-        var rootId = list!.Items.OrderBy(x => x.Id).First().Id;
+        var queueId = await IntegrationTestHelpers.GetDefaultQueueIdAsync(authedClient);
 
         var createResponse = await authedClient.PostAsJsonAsync(
-            "/api/v1/items",
-            new CreateItemRequest(rootId, "Push test item"));
+            "/api/v1/tickets",
+            IntegrationTestHelpers.SampleTicket(queueId, auth.UserId, "Push test ticket"));
 
         createResponse.EnsureSuccessStatusCode();
 
@@ -73,7 +69,7 @@ public sealed class SignalRPushIntegrationTests(LiveSyncApiWithPushFactory facto
             await Task.Delay(100);
         }
 
-        pushReceived.Task.IsCompleted.Should().BeTrue("expected PushUpdate after item creation and change processing");
+        pushReceived.Task.IsCompleted.Should().BeTrue("expected PushUpdate after ticket creation and change processing");
 
         await connection.InvokeAsync("Unsubscribe", subscribeResponse.SubscriptionId);
     }

@@ -7,14 +7,14 @@ LiveSync uses **database-per-tenant** isolation:
 - Each tenant gets `LiveSync_Tenant_{tenantId}` on the same SQL Server instance
 - Users belong to exactly one tenant (`AspNetUsers.TenantId`)
 - JWT includes `tenant_id` claim; middleware sets `ITenantContext` per request
-- EF Core global query filters scope all item reads/writes to the active tenant
+- EF Core global query filters scope all ticket and queue reads/writes to the active tenant
 
 ## Control plane vs tenant data
 
 | Data | Location |
 |------|----------|
 | Users, roles, tenant registry, audit events | `LiveSync_ControlPlane` |
-| Items, change queue, idempotency records | `LiveSync_Tenant_{id}` |
+| Queues, tickets, comments, change queue, idempotency records | `LiveSync_Tenant_{id}` |
 
 ## Tenant lifecycle
 
@@ -40,22 +40,23 @@ When suspended:
 
 ## Important implications
 
-### Item IDs are per-tenant
+### Ticket and queue IDs are per-tenant
 
-Item `5` in tenant 1 is **not** the same as item `5` in tenant 2. Parent IDs must reference items that exist in **your** tenant.
+Ticket `5` in tenant 1 is **not** the same as ticket `5` in tenant 2. Queue IDs are also scoped per tenant database.
 
 ### Register vs invite
 
 | Action | Endpoint | Result |
 |--------|----------|--------|
-| Register | `POST /api/v1/auth/register` | Creates **new tenant** + `TenantAdmin` user |
+| Register | `POST /api/v1/auth/register` | Creates **new tenant** + `TenantAdmin` user + tenant database |
 | Invite | `POST /api/v1/auth/users` | Adds `TenantUser` to **caller's tenant** (admin only) |
+| List users | `GET /api/v1/auth/users` | Returns all users in **caller's tenant** (any authenticated user) |
 
-Invite is available in the SPA under **Admin → Users** (previously on Profile).
+Invite is available in the SPA under **Admin → Users**. The ticket **Assign** dialog uses `GET /auth/users` to show tenant members by display name.
 
-### Root item bootstrap
+### Default queue bootstrap
 
-Every tenant receives a **Root** item on provisioning so the hierarchy has a valid parent for new items.
+Every tenant receives a **General** queue on provisioning (`TenantSupportDeskBootstrap`) so agents can open tickets immediately without manual setup.
 
 ## Tenant resolution pipeline
 
@@ -66,12 +67,12 @@ JWT validated
   → TenantStatusMiddleware (reject if Suspended, except reactivate)
   → ITenantContext.SetTenantId
   → AppDbContext resolves tenant connection string (Active tenants only)
-  → Global query filter: Items.TenantId == active tenant
+  → Global query filter: Tickets.TenantId / Queues.TenantId == active tenant
 ```
 
 ## Defense in depth
 
-Even with separate databases, `Items.TenantId` is kept and validated on save for additional safety.
+Even with separate databases, `TenantId` is kept on tenant-scoped entities and validated on save for additional safety.
 
 ## Profile API
 

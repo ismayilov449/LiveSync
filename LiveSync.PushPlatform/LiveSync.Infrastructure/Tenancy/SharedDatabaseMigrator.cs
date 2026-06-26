@@ -64,13 +64,10 @@ public sealed class SharedDatabaseMigrator(
 
         await using var targetDb = tenantDbContextFactory.CreateMigrationDbContext(tenantId);
 
-        var legacyItems = await ReadLegacyItemsAsync(legacyConnectionString, tenantId, ct);
         var legacyQueue = await ReadLegacyChangeQueueAsync(legacyConnectionString, tenantId, ct);
-
-        var itemsCopied = await CopyMissingItemsAsync(targetDb, legacyItems, ct);
         var queueCopied = await CopyMissingChangeQueueEntriesAsync(targetDb, legacyQueue, ct);
 
-        if (itemsCopied == 0 && queueCopied == 0)
+        if (queueCopied == 0)
         {
             logger.LogInformation(
                 "Tenant {TenantId} legacy data is already present. Skipping copy.",
@@ -79,9 +76,8 @@ public sealed class SharedDatabaseMigrator(
         }
 
         logger.LogInformation(
-            "Migrated tenant {TenantId}: {ItemCount} item(s), {QueueCount} queue entry(ies)",
+            "Migrated tenant {TenantId}: {QueueCount} queue entry(ies)",
             tenantId,
-            itemsCopied,
             queueCopied);
     }
 
@@ -135,29 +131,26 @@ public sealed class SharedDatabaseMigrator(
         await connection.OpenAsync(ct);
 
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DISTINCT TenantId FROM Items ORDER BY TenantId";
+        command.CommandText = """
+            IF OBJECT_ID('ChangeQueue', 'U') IS NOT NULL
+                SELECT DISTINCT
+                    CAST(SUBSTRING([Key], CHARINDEX('tenantId#', [Key]) + 9,
+                        CHARINDEX(':', [Key], CHARINDEX('tenantId#', [Key])) - CHARINDEX('tenantId#', [Key]) - 9) AS INT) AS TenantId
+                FROM ChangeQueue
+                WHERE [Key] LIKE '%tenantId#%'
+            ELSE
+                SELECT CAST(NULL AS INT) WHERE 1 = 0
+            """;
 
         var tenantIds = new List<int>();
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
-            tenantIds.Add(reader.GetInt32(0));
+        {
+            if (!reader.IsDBNull(0))
+                tenantIds.Add(reader.GetInt32(0));
+        }
 
-        return tenantIds;
-    }
-
-    private static async Task<List<Domain.Entities.ItemAggregate.Item>> ReadLegacyItemsAsync(
-        string legacyConnectionString,
-        int tenantId,
-        CancellationToken ct)
-    {
-        var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(legacyConnectionString);
-
-        await using var legacyDb = new AppDbContext(optionsBuilder.Options);
-        return await legacyDb.Items
-            .AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
-            .ToListAsync(ct);
+        return tenantIds.Distinct().OrderBy(x => x).ToList();
     }
 
     private static async Task<List<ChangeQueueEntry>> ReadLegacyChangeQueueAsync(
@@ -174,42 +167,6 @@ public sealed class SharedDatabaseMigrator(
             .AsNoTracking()
             .Where(x => x.Key.Contains(tenantToken))
             .ToListAsync(ct);
-    }
-
-    private static async Task<int> CopyMissingItemsAsync(
-        AppDbContext targetDb,
-        IReadOnlyList<Domain.Entities.ItemAggregate.Item> legacyItems,
-        CancellationToken ct)
-    {
-        if (legacyItems.Count == 0)
-            return 0;
-
-        var existingIds = await targetDb.Items
-            .Select(x => x.Id)
-            .ToListAsync(ct);
-
-        var existingIdSet = existingIds.ToHashSet();
-        var itemsToCopy = legacyItems
-            .Where(x => !existingIdSet.Contains(x.Id))
-            .OrderBy(x => x.Id)
-            .ToList();
-
-        if (itemsToCopy.Count == 0)
-            return 0;
-
-        await using var transaction = await targetDb.Database.BeginTransactionAsync(ct);
-        await targetDb.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT Items ON", ct);
-
-        targetDb.Items.AddRange(itemsToCopy);
-        await targetDb.SaveChangesAsync(ct);
-
-        await targetDb.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT Items OFF", ct);
-
-        var maxId = await targetDb.Items.MaxAsync(x => (int?)x.Id, ct) ?? 0;
-        await targetDb.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('Items', RESEED, {0})", maxId, ct);
-
-        await transaction.CommitAsync(ct);
-        return itemsToCopy.Count;
     }
 
     private static async Task<int> CopyMissingChangeQueueEntriesAsync(

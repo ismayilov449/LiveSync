@@ -2,6 +2,7 @@
 using LiveSync.Application.Observability;
 using LiveSync.Application.RealTimeSync.Contracts;
 using LiveSync.Application.RealTimeSync.Ports;
+using LiveSync.Domain.Enums;
 using Microsoft.AspNetCore.SignalR;
 
 namespace LiveSync.Infrastructure.SignalR;
@@ -15,9 +16,13 @@ public sealed class SignalRRealTimeNotifier(IHubContext<PushHub, IPushClient> hu
         LiveSyncMetrics.SignalRPushes.Add(1);
     }
 
-    public async Task NotifyTenantAsync(int tenantId, ChangeNotificationDto notification, CancellationToken ct = default)
+    public async Task NotifyBucketAsync(
+        int tenantId,
+        TopicBucket bucket,
+        ChangeNotificationDto notification,
+        CancellationToken ct = default)
     {
-        await hub.Clients.Group(PushHubGroups.Tenant(tenantId)).PushUpdate(notification);
+        await hub.Clients.Group(PushHubGroups.TenantBucket(tenantId, bucket)).PushUpdate(notification);
         LiveSyncMetrics.SignalRPushes.Add(1);
     }
 }

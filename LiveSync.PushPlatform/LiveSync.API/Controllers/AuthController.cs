@@ -87,6 +87,29 @@ public sealed class AuthController(
         });
     }
 
+    [Authorize]
+    [HttpGet("users")]
+    public async Task<ActionResult<IReadOnlyList<TenantUserResponse>>> ListUsers(
+        IUserContext userContext,
+        CancellationToken ct)
+    {
+        var users = await userManager.Users
+            .AsNoTracking()
+            .Where(x => x.TenantId == userContext.TenantId)
+            .OrderBy(x => x.DisplayName)
+            .ThenBy(x => x.UserName)
+            .Select(x => new TenantUserResponse
+            {
+                UserId = x.Id,
+                UserName = x.UserName ?? string.Empty,
+                Email = x.Email ?? string.Empty,
+                DisplayName = x.DisplayName
+            })
+            .ToListAsync(ct);
+
+        return Ok(users);
+    }
+
     [Authorize(Roles = TenantRoles.TenantAdmin)]
     [HttpPost("users")]
     public async Task<ActionResult<CreatedUserResponse>> CreateUser(
@@ -240,6 +263,14 @@ public sealed record CreatedUserResponse
 {
     public required int UserId { get; init; }
     public required int TenantId { get; init; }
+    public required string UserName { get; init; }
+    public required string Email { get; init; }
+    public required string DisplayName { get; init; }
+}
+
+public sealed record TenantUserResponse
+{
+    public required int UserId { get; init; }
     public required string UserName { get; init; }
     public required string Email { get; init; }
     public required string DisplayName { get; init; }

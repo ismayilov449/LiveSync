@@ -18,7 +18,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login({ userName, password });
-      navigate('/items', { replace: true });
+      navigate('/tickets', { replace: true });
     } catch (err) {
       setError(err instanceof HttpError && err.status === 401
         ? 'Invalid username or password.'

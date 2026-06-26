@@ -21,7 +21,7 @@ export function RegisterPage() {
     setLoading(true);
     try {
       await register({ tenantName, userName, email, password, displayName });
-      navigate('/items', { replace: true });
+      navigate('/tickets', { replace: true });
     } catch (err) {
       setError(err instanceof HttpError
         ? err.message

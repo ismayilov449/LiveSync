@@ -10,31 +10,31 @@ namespace LiveSync.Tests;
 public sealed class DynamicExpressoFilterEvaluatorTests
 {
     [Fact]
-    public void IsValidFilter_ForItemBucket_AcceptsValidExpression()
+    public void IsValidFilter_ForTicketBucket_AcceptsValidExpression()
     {
-        var registry = new BucketModuleRegistry([new ItemBucketModule(null!)]);
+        var registry = new BucketModuleRegistry([new TicketBucketModule(null!)]);
         var evaluator = new DynamicExpressoFilterEvaluator(registry, NullLogger<DynamicExpressoFilterEvaluator>.Instance);
 
-        Assert.True(evaluator.IsValidFilter("item.ParentId == 5", TopicBucket.Item));
-        Assert.False(evaluator.IsValidFilter("item.ParentId == ", TopicBucket.Item));
+        Assert.True(evaluator.IsValidFilter("ticket.QueueId == 5", TopicBucket.Ticket));
+        Assert.False(evaluator.IsValidFilter("ticket.QueueId == ", TopicBucket.Ticket));
     }
 
     [Fact]
     public void Matches_ReturnsExpectedResult()
     {
-        var registry = new BucketModuleRegistry([new ItemBucketModule(null!)]);
+        var registry = new BucketModuleRegistry([new TicketBucketModule(null!)]);
         var evaluator = new DynamicExpressoFilterEvaluator(registry, NullLogger<DynamicExpressoFilterEvaluator>.Instance);
 
-        ICacheDto dto = new ItemCacheDto
+        ICacheDto dto = new TicketCacheDto
         {
             Id = 1,
             TenantId = 1,
-            ParentId = 5,
-            Name = "Apple",
+            QueueId = 5,
+            Subject = "Login issue",
             IsActive = true
         };
 
-        Assert.True(evaluator.Matches("item.ParentId == 5", dto));
-        Assert.False(evaluator.Matches("item.ParentId == 99", dto));
+        Assert.True(evaluator.Matches("ticket.QueueId == 5", dto));
+        Assert.False(evaluator.Matches("ticket.QueueId == 99", dto));
     }
 }

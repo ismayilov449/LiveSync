@@ -2,8 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using LiveSync.API.Controllers;
-using LiveSync.API.Contracts.Items;
-using LiveSync.Application.CQRS.Items.Models;
+using LiveSync.Application.CQRS.Tickets.Models;
 
 namespace LiveSync.IntegrationTests;
 
@@ -11,7 +10,7 @@ namespace LiveSync.IntegrationTests;
 public sealed class TenantIsolationIntegrationTests(LiveSyncApiFactory factory)
 {
     [Fact]
-    public async Task ItemsCreatedInOneTenant_AreNotVisibleInAnotherTenant()
+    public async Task TicketsCreatedInOneTenant_AreNotVisibleInAnotherTenant()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
 
@@ -30,29 +29,28 @@ public sealed class TenantIsolationIntegrationTests(LiveSyncApiFactory factory)
         var tenant1Client = factory.CreateAuthenticatedClient(tenant1.Token);
         var tenant2Client = factory.CreateAuthenticatedClient(tenant2.Token);
 
-        var tenant1RootId = await GetRootItemIdAsync(tenant1Client);
-        var tenant2RootId = await GetRootItemIdAsync(tenant2Client);
+        var tenant1QueueId = await IntegrationTestHelpers.GetDefaultQueueIdAsync(tenant1Client);
 
         var createResponse = await tenant1Client.PostAsJsonAsync(
-            "/api/v1/items",
-            new CreateItemRequest(tenant1RootId, "Tenant1 Only Item"));
+            "/api/v1/tickets",
+            IntegrationTestHelpers.SampleTicket(tenant1QueueId, tenant1.UserId, "Tenant1 Only Ticket"));
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var createdId = await createResponse.Content.ReadFromJsonAsync<int>();
         createdId.Should().BeGreaterThan(0);
 
-        var tenant2List = await tenant2Client.GetFromJsonAsync<PagedItemsResponse>("/api/v1/items");
+        var tenant2List = await tenant2Client.GetFromJsonAsync<PagedTicketsResponse>("/api/v1/tickets");
         tenant2List.Should().NotBeNull();
         tenant2List!.Items.Should().NotContain(x => x.Id == createdId);
-        tenant2List.Items.Should().NotContain(x => x.Name == "Tenant1 Only Item");
+        tenant2List.Items.Should().NotContain(x => x.Subject == "Tenant1 Only Ticket");
 
-        var tenant1List = await tenant1Client.GetFromJsonAsync<PagedItemsResponse>("/api/v1/items");
+        var tenant1List = await tenant1Client.GetFromJsonAsync<PagedTicketsResponse>("/api/v1/tickets");
         tenant1List.Should().NotBeNull();
-        tenant1List!.Items.Should().Contain(x => x.Id == createdId && x.Name == "Tenant1 Only Item");
+        tenant1List!.Items.Should().Contain(x => x.Id == createdId && x.Subject == "Tenant1 Only Ticket");
         tenant1.TenantId.Should().NotBe(tenant2.TenantId);
     }
 
-    private static async Task<(string Token, int TenantId)> RegisterAsync(
+    private static async Task<(string Token, int TenantId, int UserId)> RegisterAsync(
         LiveSyncApiFactory factory,
         string tenantName,
         string userName,
@@ -65,14 +63,6 @@ public sealed class TenantIsolationIntegrationTests(LiveSyncApiFactory factory)
 
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<AuthTokenResponse>();
-        return (body!.AccessToken, body.TenantId);
-    }
-
-    private static async Task<int> GetRootItemIdAsync(HttpClient client)
-    {
-        var list = await client.GetFromJsonAsync<PagedItemsResponse>("/api/v1/items");
-        list.Should().NotBeNull();
-        list!.Items.Should().NotBeEmpty();
-        return list.Items.OrderBy(x => x.Id).First().Id;
+        return (body!.AccessToken, body.TenantId, body.UserId);
     }
 }

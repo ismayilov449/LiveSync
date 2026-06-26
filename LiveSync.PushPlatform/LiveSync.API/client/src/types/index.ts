@@ -55,20 +55,11 @@ export interface CreatedUserResponse {
   displayName: string;
 }
 
-export interface Item {
-  id: number;
-  tenantId: number;
-  parentId: number;
-  name: string;
-  isActive: boolean;
-  createdAtUtc: string;
-}
-
-export interface PagedItemsResponse {
-  items: Item[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
+export interface TenantUser {
+  userId: number;
+  userName: string;
+  email: string;
+  displayName: string;
 }
 
 export interface LoginRequest {
@@ -84,19 +75,88 @@ export interface RegisterRequest {
   displayName: string;
 }
 
-export interface CreateItemRequest {
-  parentId: number;
-  name: string;
-}
-
-export interface UpdateItemRequest {
-  name: string;
-}
-
-export interface MoveItemRequest {
-  parentId: number;
-}
-
 export interface ApiError {
   message: string;
+}
+
+export interface ChangeNotificationDto {
+  operation: number;
+  entity: {
+    id: string;
+    bucket: string;
+  };
+  change?: unknown;
+}
+
+export type TicketStatus = 0 | 1 | 2 | 3 | 4;
+export type TicketPriority = 0 | 1 | 2;
+
+export interface TicketComment {
+  id: number;
+  authorUserId: number;
+  body: string;
+  createdAtUtc: string;
+}
+
+export interface Ticket {
+  id: number;
+  tenantId: number;
+  queueId: number;
+  subject: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  reporterUserId: number;
+  assigneeUserId: number | null;
+  isActive: boolean;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  comments: TicketComment[];
+}
+
+export interface PagedTicketsResponse {
+  items: Ticket[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface OpenTicketRequest {
+  queueId: number;
+  subject: string;
+  description: string;
+  priority: TicketPriority;
+  reporterUserId: number;
+}
+
+export interface AssignTicketRequest {
+  assigneeUserId: number;
+}
+
+export interface AddCommentRequest {
+  authorUserId: number;
+  body: string;
+}
+
+export interface Queue {
+  id: number;
+  tenantId: number;
+  name: string;
+  isActive: boolean;
+  createdAtUtc: string;
+}
+
+export interface PagedQueuesResponse {
+  items: Queue[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface CreateQueueRequest {
+  name: string;
+}
+
+export interface UpdateQueueRequest {
+  name: string;
 }

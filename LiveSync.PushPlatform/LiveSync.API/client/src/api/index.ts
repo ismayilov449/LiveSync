@@ -1,17 +1,22 @@
 import { apiFetch } from './http';
 import type {
+  AddCommentRequest,
+  AssignTicketRequest,
   AuthSession,
   ChangeQueueStats,
-  CreateItemRequest,
+  CreateQueueRequest,
   CreateUserRequest,
   CreatedUserResponse,
-  Item,
   LoginRequest,
-  MoveItemRequest,
+  OpenTicketRequest,
   PagedAuditEvents,
-  PagedItemsResponse,
+  PagedQueuesResponse,
+  PagedTicketsResponse,
+  Queue,
   RegisterRequest,
-  UpdateItemRequest,
+  Ticket,
+  TenantUser,
+  UpdateQueueRequest,
   UserProfile,
 } from '../types';
 
@@ -33,6 +38,9 @@ export const authApi = {
   me: (token: string) =>
     apiFetch<UserProfile>(`${API_V1}/auth/me`, {}, token),
 
+  listUsers: (token: string) =>
+    apiFetch<TenantUser[]>(`${API_V1}/auth/users`, {}, token),
+
   createUser: (token: string, body: CreateUserRequest) =>
     apiFetch<CreatedUserResponse>(`${API_V1}/auth/users`, {
       method: 'POST',
@@ -40,45 +48,83 @@ export const authApi = {
     }, token),
 };
 
-export const itemsApi = {
+export const ticketsApi = {
   list: (
     token: string,
-    options?: { parentId?: number; page?: number; pageSize?: number },
+    options?: { queueId?: number; status?: number; page?: number; pageSize?: number },
   ) => {
     const params = new URLSearchParams();
-    if (options?.parentId != null) params.set('parentId', String(options.parentId));
+    if (options?.queueId != null) params.set('queueId', String(options.queueId));
+    if (options?.status != null) params.set('status', String(options.status));
     if (options?.page != null) params.set('page', String(options.page));
     if (options?.pageSize != null) params.set('pageSize', String(options.pageSize));
     const query = params.toString();
-    return apiFetch<PagedItemsResponse>(`${API_V1}/items${query ? `?${query}` : ''}`, {}, token);
+    return apiFetch<PagedTicketsResponse>(`${API_V1}/tickets${query ? `?${query}` : ''}`, {}, token);
   },
 
   get: (token: string, id: number) =>
-    apiFetch<Item>(`${API_V1}/items/${id}`, {}, token),
+    apiFetch<Ticket>(`${API_V1}/tickets/${id}`, {}, token),
 
-  create: (token: string, body: CreateItemRequest) =>
-    apiFetch<number>(`${API_V1}/items`, {
+  open: (token: string, body: OpenTicketRequest) =>
+    apiFetch<number>(`${API_V1}/tickets`, {
       method: 'POST',
       body: JSON.stringify(body),
     }, token),
 
-  update: (token: string, id: number, body: UpdateItemRequest) =>
-    apiFetch<void>(`${API_V1}/items/${id}`, {
+  assign: (token: string, id: number, body: AssignTicketRequest) =>
+    apiFetch<void>(`${API_V1}/tickets/${id}/assign`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }, token),
+
+  addComment: (token: string, id: number, body: AddCommentRequest) =>
+    apiFetch<void>(`${API_V1}/tickets/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }, token),
+
+  startProgress: (token: string, id: number) =>
+    apiFetch<void>(`${API_V1}/tickets/${id}/start-progress`, { method: 'POST' }, token),
+
+  resolve: (token: string, id: number) =>
+    apiFetch<void>(`${API_V1}/tickets/${id}/resolve`, { method: 'POST' }, token),
+
+  close: (token: string, id: number) =>
+    apiFetch<void>(`${API_V1}/tickets/${id}/close`, { method: 'POST' }, token),
+
+  delete: (token: string, id: number) =>
+    apiFetch<void>(`${API_V1}/tickets/${id}`, { method: 'DELETE' }, token),
+};
+
+export const queuesApi = {
+  list: (token: string, options?: { page?: number; pageSize?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.page != null) params.set('page', String(options.page));
+    if (options?.pageSize != null) params.set('pageSize', String(options.pageSize));
+    const query = params.toString();
+    return apiFetch<PagedQueuesResponse>(`${API_V1}/queues${query ? `?${query}` : ''}`, {}, token);
+  },
+
+  get: (token: string, id: number) =>
+    apiFetch<Queue>(`${API_V1}/queues/${id}`, {}, token),
+
+  create: (token: string, body: CreateQueueRequest) =>
+    apiFetch<number>(`${API_V1}/queues`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }, token),
+
+  update: (token: string, id: number, body: UpdateQueueRequest) =>
+    apiFetch<void>(`${API_V1}/queues/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }, token),
 
   delete: (token: string, id: number) =>
-    apiFetch<void>(`${API_V1}/items/${id}`, { method: 'DELETE' }, token),
+    apiFetch<void>(`${API_V1}/queues/${id}`, { method: 'DELETE' }, token),
 
   deactivate: (token: string, id: number) =>
-    apiFetch<void>(`${API_V1}/items/${id}/deactivate`, { method: 'POST' }, token),
-
-  move: (token: string, id: number, body: MoveItemRequest) =>
-    apiFetch<void>(`${API_V1}/items/${id}/parent`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }, token),
+    apiFetch<void>(`${API_V1}/queues/${id}/deactivate`, { method: 'POST' }, token),
 };
 
 export const operationsApi = {

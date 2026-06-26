@@ -24,6 +24,7 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
             ValidationException => (StatusCodes.Status400BadRequest, "Validation failed"),
             NotFoundException => (StatusCodes.Status404NotFound, "Not found"),
             ConflictException => (StatusCodes.Status409Conflict, "Conflict"),
+            BusinessRuleException => (StatusCodes.Status409Conflict, "Business rule violation"),
             ArgumentException => (StatusCodes.Status400BadRequest, "Bad request"),
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized"),
             TenantSuspendedException => (StatusCodes.Status403Forbidden, "Tenant suspended"),

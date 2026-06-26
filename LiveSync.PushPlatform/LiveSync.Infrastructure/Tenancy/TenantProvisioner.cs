@@ -13,7 +13,7 @@ namespace LiveSync.Infrastructure.Tenancy;
 public sealed class TenantProvisioner(
     MasterDbContext masterDb,
     ITenantDbContextFactory tenantDbContextFactory,
-    ITenantItemBootstrap tenantItemBootstrap,
+    ITenantSupportDeskBootstrap tenantSupportDeskBootstrap,
     IOptions<TenancySettings> tenancyOptions,
     IConfiguration configuration,
     ILogger<TenantProvisioner> logger) : ITenantProvisioner
@@ -37,7 +37,7 @@ public sealed class TenantProvisioner(
 
         await CreatePhysicalDatabaseAsync(tenant.DatabaseName, ct);
         await tenantDbContextFactory.MigrateTenantDatabaseAsync(tenant.Id, ct);
-        await tenantItemBootstrap.EnsureRootItemAsync(tenant.Id, ct);
+        await tenantSupportDeskBootstrap.EnsureDefaultQueueAsync(tenant.Id, ct);
 
         tenant.Status = TenantStatus.Active;
         await masterDb.SaveChangesAsync(ct);

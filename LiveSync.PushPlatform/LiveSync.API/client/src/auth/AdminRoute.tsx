@@ -9,7 +9,7 @@ export function AdminRoute() {
   }
 
   if (!isTenantAdmin) {
-    return <Navigate to="/items" replace />;
+    return <Navigate to="/tickets" replace />;
   }
 
   return <Outlet />;
