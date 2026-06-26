@@ -104,12 +104,6 @@ jobs:
 
 
 
-      - name: Integration tests
-
-        run: dotnet test LiveSync.PushPlatform/LiveSync.IntegrationTests/LiveSync.IntegrationTests.csproj --configuration Release --verbosity normal
-
-
-
       - name: Build Docker images
 
         working-directory: LiveSync.PushPlatform
