@@ -88,7 +88,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 
 if (app.Environment.IsDevelopment())
+{
     app.UseMiddleware<DevelopmentHeaderAuthenticationMiddleware>();
+}
 
 app.UseAuthorization();
 app.UseMiddleware<TenantResolutionMiddleware>();
