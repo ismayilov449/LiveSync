@@ -47,7 +47,7 @@
 
 | Question | Answer |
 |----------|--------|
-| **What is it?** | A portfolio-grade **multi-tenant SaaS backend** with a React SPA — not a tutorial todo app. |
+| **What is it?** | A portfolio-grade **multi-tenant SaaS backend** with a React SPA. |
 | **What problem does it solve?** | Teams need **isolated help desks** *and* **live ticket updates** when anyone opens, comments, or changes status. |
 | **How is data isolated?** | **Database per tenant** + control plane for users/tenants/audit. |
 | **How is live sync done?** | Domain events → change queue → worker → Redis → **bucket-scoped SignalR push** (Tickets vs Queues). |
