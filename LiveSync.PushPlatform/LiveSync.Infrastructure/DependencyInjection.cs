@@ -1,6 +1,8 @@
-﻿using LiveSync.Application.Configuration;
+﻿using LiveSync.Application.Common.Interfaces;
+using LiveSync.Application.Configuration;
 using LiveSync.Infrastructure.Configuration;
 using LiveSync.Infrastructure.HostedServices;
+using LiveSync.Infrastructure.Locking;
 using Microsoft.Extensions.Hosting;
 using LiveSync.Application.RealTimeSync.Buckets;
 using LiveSync.Application.RealTimeSync.Handlers;
@@ -18,7 +20,9 @@ using LiveSync.Infrastructure.Redis;
 using LiveSync.Infrastructure.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using LiveSync.Infrastructure.Locking;
+using LiveSync.Infrastructure.Audit;
+using LiveSync.Infrastructure.Persistence.Idempotency;
+using LiveSync.Infrastructure.Tenancy;
 
 namespace LiveSync.Infrastructure;
 
@@ -40,8 +44,12 @@ public static class DependencyInjection
 
         services.AddScoped<IChangeQueueStore, SqlChangeQueueStore>();
         services.AddScoped<ICacheDtoProvider, CacheDtoProvider>();
+        services.AddScoped<IIdempotencyStore, SqlIdempotencyStore>();
+        services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<ITenantLifecycleService, TenantLifecycleService>();
 
         services.AddSingleton<IRedisConnectionFactory, RedisConnectionFactory>();
+        services.AddSingleton<RedisResilienceExecutor>();
         services.AddScoped<ISubscriptionStore, RedisSubscriptionStore>();
         services.AddScoped<ITopicDataCache, RedisTopicDataCache>();
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
@@ -57,6 +65,8 @@ public static class DependencyInjection
 
         if (hostingOptions.RunChangeDetection)
             services.AddHostedService<ChangeDetectionHostedService>();
+
+        services.AddHostedService<ChangeQueueMetricsHostedService>();
 
         if (hostingOptions.RunSubscriptionExpiry)
             services.AddHostedService<SubscriptionExpiryHostedService>();

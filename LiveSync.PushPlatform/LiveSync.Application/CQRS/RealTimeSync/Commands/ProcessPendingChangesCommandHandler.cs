@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using LiveSync.Application.Common.Interfaces;
 using LiveSync.Application.Configuration;
+using LiveSync.Application.Observability;
 using LiveSync.Application.RealTimeSync.Ports;
 using LiveSync.Application.RealTimeSync.Services;
 using Microsoft.Extensions.Logging;
@@ -45,7 +47,10 @@ public sealed class ProcessPendingChangesCommandHandler(
 
             try
             {
+                var sw = Stopwatch.StartNew();
                 await processor.ProcessAsync(queued.Envelope, ct);
+                sw.Stop();
+                LiveSyncMetrics.ChangeProcessingDuration.Record(sw.Elapsed.TotalMilliseconds);
                 await queue.MarkProcessedAsync(queued.QueueEntryId, ct);
             }
             catch (Exception ex)

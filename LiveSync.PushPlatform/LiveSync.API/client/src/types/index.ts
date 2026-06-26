@@ -9,10 +9,35 @@ export interface AuthSession {
 export interface UserProfile {
   userId: number;
   tenantId: number;
+  tenantName: string;
+  tenantStatus: string;
   userName: string;
   email: string;
   displayName: string;
   roles: string[];
+}
+
+export interface ChangeQueueStats {
+  pendingCount: number;
+  deadLetterCount: number;
+}
+
+export interface AuditEvent {
+  id: number;
+  tenantId: number;
+  userId: number;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  details: string | null;
+  createdAtUtc: string;
+}
+
+export interface PagedAuditEvents {
+  items: AuditEvent[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
 }
 
 export interface CreateUserRequest {

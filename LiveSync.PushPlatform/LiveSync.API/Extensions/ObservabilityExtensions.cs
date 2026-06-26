@@ -1,10 +1,7 @@
-using LiveSync.Application.Common.Interfaces;
+using LiveSync.Infrastructure.Observability;
 using LiveSync.Infrastructure.Persistence.ControlPlane;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Events;
 
@@ -23,18 +20,7 @@ public static class ObservabilityExtensions
             .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
             .WriteTo.Console());
 
-        builder.Services.AddOpenTelemetry()
-            .ConfigureResource(resource => resource.AddService(builder.Environment.ApplicationName))
-            .WithTracing(tracing => tracing
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddEntityFrameworkCoreInstrumentation()
-                .AddSource("LiveSync")
-                .AddConsoleExporter())
-            .WithMetrics(metrics => metrics
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddRuntimeInstrumentation());
+        builder.Services.AddLiveSyncOpenTelemetry(builder.Configuration, builder.Environment);
 
         return builder;
     }
@@ -76,5 +62,11 @@ public static class ObservabilityExtensions
         });
 
         return endpoints;
+    }
+
+    public static WebApplication MapLiveSyncObservabilityEndpoints(this WebApplication app)
+    {
+        app.MapPrometheusScrapingEndpoint("/metrics");
+        return app;
     }
 }

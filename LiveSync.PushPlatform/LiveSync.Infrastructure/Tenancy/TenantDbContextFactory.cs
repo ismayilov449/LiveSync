@@ -26,7 +26,7 @@ public sealed class TenantDbContextFactory(ITenantConnectionResolver connectionR
 
         var connectionString = connectionResolver.GetConnectionStringAsync(tenantId).GetAwaiter().GetResult();
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(maxRetryCount: 3));
         return new AppDbContext(optionsBuilder.Options, tenantContext);
     }
 
@@ -34,7 +34,7 @@ public sealed class TenantDbContextFactory(ITenantConnectionResolver connectionR
     {
         var connectionString = connectionResolver.GetConnectionStringAsync(tenantId).GetAwaiter().GetResult();
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(maxRetryCount: 3));
         return new AppDbContext(optionsBuilder.Options);
     }
 
@@ -54,7 +54,7 @@ public sealed class TenantDbContextFactory(ITenantConnectionResolver connectionR
     {
         var connectionString = await connectionResolver.GetConnectionStringAsync(tenantId, ct);
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(maxRetryCount: 3));
         return new AppDbContext(optionsBuilder.Options);
     }
 }

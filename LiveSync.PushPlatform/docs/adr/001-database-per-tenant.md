@@ -16,7 +16,7 @@ Options considered:
 
 ## Decision
 
-Use **database per tenant** with a central control plane database for identity and tenant registry.
+Use **database per tenant** with a central control plane database for identity, tenant registry, and audit events (`AuditEvents`).
 
 Each tenant database is named `LiveSync_Tenant_{id}` and provisioned when a tenant registers.
 

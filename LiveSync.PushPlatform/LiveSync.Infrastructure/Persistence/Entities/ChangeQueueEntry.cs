@@ -13,4 +13,5 @@ public sealed class ChangeQueueEntry
     public DateTimeOffset? ProcessedAt { get; set; }
     public DateTimeOffset? ClaimedAt { get; set; }
     public string? ClaimToken { get; set; }
+    public int Status { get; set; }
 }

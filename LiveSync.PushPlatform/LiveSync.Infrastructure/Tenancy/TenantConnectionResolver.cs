@@ -1,5 +1,6 @@
-using LiveSync.Application.Configuration;
+using LiveSync.Application.Common.Exceptions;
 using LiveSync.Application.Common.Interfaces;
+using LiveSync.Application.Configuration;
 using LiveSync.Infrastructure.Persistence.ControlPlane;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,7 +17,7 @@ public sealed class TenantConnectionResolver(
 
     public async Task<string> GetConnectionStringAsync(int tenantId, CancellationToken ct = default)
     {
-        var cacheKey = $"tenant-connection:{tenantId}";
+        var cacheKey = GetCacheKey(tenantId);
 
         if (cache.TryGetValue(cacheKey, out string? cached) && !string.IsNullOrWhiteSpace(cached))
             return cached;
@@ -28,7 +29,7 @@ public sealed class TenantConnectionResolver(
                 $"Tenant {tenantId} was not found in the control plane. Register a tenant or run database initialization.");
 
         if (tenant.Status == TenantStatus.Suspended)
-            throw new InvalidOperationException($"Tenant {tenantId} is suspended.");
+            throw new TenantSuspendedException(tenantId);
 
         if (tenant.Status is not (TenantStatus.Active or TenantStatus.Provisioning))
         {
@@ -47,9 +48,13 @@ public sealed class TenantConnectionResolver(
         return connectionString;
     }
 
+    public void InvalidateCache(int tenantId) => cache.Remove(GetCacheKey(tenantId));
+
     internal string BuildConnectionString(string databaseName)
     {
         var settings = tenancyOptions.Value;
         return settings.ConnectionTemplate.Replace("{DatabaseName}", databaseName, StringComparison.Ordinal);
     }
+
+    private static string GetCacheKey(int tenantId) => $"tenant-connection:{tenantId}";
 }

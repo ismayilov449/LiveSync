@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 
 namespace LiveSync.API.Controllers;
 
@@ -21,6 +22,7 @@ public sealed class AuthController(
     SignInManager<ApplicationUser> signInManager,
     ITenantProvisioner tenantProvisioner,
     JwtTokenService jwtTokenService,
+    MasterDbContext masterDb,
     IHostEnvironment environment) : ControllerBase
 {
     [AllowAnonymous]
@@ -171,10 +173,18 @@ public sealed class AuthController(
 
         var roles = await userManager.GetRolesAsync(user);
 
+        var tenant = await masterDb.Tenants
+            .AsNoTracking()
+            .Where(x => x.Id == user.TenantId)
+            .Select(x => new { x.Name, x.Status })
+            .FirstOrDefaultAsync(ct);
+
         return Ok(new UserProfileResponse
         {
             UserId = user.Id,
             TenantId = user.TenantId,
+            TenantName = tenant?.Name ?? string.Empty,
+            TenantStatus = tenant?.Status.ToString() ?? nameof(TenantStatus.Active),
             UserName = user.UserName ?? string.Empty,
             Email = user.Email ?? string.Empty,
             DisplayName = user.DisplayName,
@@ -218,6 +228,8 @@ public sealed record UserProfileResponse
 {
     public required int UserId { get; init; }
     public required int TenantId { get; init; }
+    public required string TenantName { get; init; }
+    public required string TenantStatus { get; init; }
     public required string UserName { get; init; }
     public required string Email { get; init; }
     public required string DisplayName { get; init; }

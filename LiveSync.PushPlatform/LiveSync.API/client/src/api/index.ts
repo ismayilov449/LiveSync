@@ -1,12 +1,14 @@
 import { apiFetch } from './http';
 import type {
   AuthSession,
+  ChangeQueueStats,
   CreateItemRequest,
   CreateUserRequest,
   CreatedUserResponse,
   Item,
   LoginRequest,
   MoveItemRequest,
+  PagedAuditEvents,
   PagedItemsResponse,
   RegisterRequest,
   UpdateItemRequest,
@@ -77,4 +79,27 @@ export const itemsApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }, token),
+};
+
+export const operationsApi = {
+  changeQueue: (token: string) =>
+    apiFetch<ChangeQueueStats>(`${API_V1}/operations/change-queue`, {}, token),
+};
+
+export const auditApi = {
+  list: (token: string, page = 1, pageSize = 20) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    return apiFetch<PagedAuditEvents>(`${API_V1}/audit?${params}`, {}, token);
+  },
+};
+
+export const tenantApi = {
+  suspend: (token: string) =>
+    apiFetch<void>(`${API_V1}/tenants/suspend`, { method: 'POST' }, token),
+
+  reactivate: (token: string) =>
+    apiFetch<void>(`${API_V1}/tenants/reactivate`, { method: 'POST' }, token),
 };

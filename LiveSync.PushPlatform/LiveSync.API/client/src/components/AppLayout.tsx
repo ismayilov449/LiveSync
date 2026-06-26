@@ -1,40 +1,41 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 export function AppLayout() {
   const { session, logout, isTenantAdmin } = useAuth();
+  const location = useLocation();
 
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark">LS</span>
-          <div>
-            <strong>LiveSync</strong>
-            <span className="muted">Tenant {session?.tenantId}</span>
-          </div>
+          <span className="brand-wordmark">livesync</span>
+          <span className="brand-meta">t/{session?.tenantId}</span>
         </div>
         <nav className="app-nav">
-          <NavLink to="/items" className={({ isActive }) => isActive ? 'active' : ''}>
+          <NavLink to="/items" className={({ isActive }) => (isActive ? 'active' : '')}>
             Items
           </NavLink>
-          <NavLink to="/profile" className={({ isActive }) => isActive ? 'active' : ''}>
-            Profile
-          </NavLink>
           {isTenantAdmin && (
-            <NavLink to="/profile#invite" className={({ isActive }) => isActive ? 'active' : ''}>
-              Invite
+            <NavLink
+              to="/admin/overview"
+              className={() => (location.pathname.startsWith('/admin') ? 'active' : '')}
+            >
+              Admin
             </NavLink>
           )}
-          <NavLink to="/about" className={({ isActive }) => isActive ? 'active' : ''}>
+          <NavLink to="/profile" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Account
+          </NavLink>
+          <NavLink to="/about" className={({ isActive }) => (isActive ? 'active' : '')}>
             About
           </NavLink>
-          <button type="button" className="btn btn-ghost" onClick={logout}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={logout}>
             Sign out
           </button>
         </nav>
       </header>
-      <main className="app-main">
+      <main className="app-main app-main-wide">
         <Outlet />
       </main>
     </div>

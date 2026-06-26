@@ -1,7 +1,6 @@
 using FluentValidation;
 using LiveSync.Application.Common.Exceptions;
 using Microsoft.AspNetCore.Mvc;
-
 namespace LiveSync.API.Middleware;
 
 public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
@@ -27,6 +26,7 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
             ConflictException => (StatusCodes.Status409Conflict, "Conflict"),
             ArgumentException => (StatusCodes.Status400BadRequest, "Bad request"),
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized"),
+            TenantSuspendedException => (StatusCodes.Status403Forbidden, "Tenant suspended"),
             _ => (StatusCodes.Status500InternalServerError, "Internal server error")
         };
 

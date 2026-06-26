@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Multi-tenant real-time sync platform</strong><br/>
-  Database-per-tenant SaaS · CQRS · SignalR · React
+  Database-per-tenant SaaS · CQRS · SignalR · React · Prometheus
 </p>
 
 <p align="center">
@@ -15,18 +15,7 @@
 
 **All project documentation lives in [`LiveSync.PushPlatform/README.md`](LiveSync.PushPlatform/README.md).**
 
-That README includes:
-
-- Architecture diagrams (Mermaid + visuals)
-- Step-by-step demo walkthrough for reviewers
-- Multi-tenancy, RBAC, and real-time sync explained
-- Quick start, API reference, testing, Docker
-
-**Start here if you're evaluating this repo:**
-
-1. [LiveSync.PushPlatform/README.md](LiveSync.PushPlatform/README.md) — main guide
-2. [docs/demo-walkthrough.md](LiveSync.PushPlatform/docs/demo-walkthrough.md) — hands-on 10-minute demo
-3. [docs/real-time-sync.md](LiveSync.PushPlatform/docs/real-time-sync.md) — how live push works
+Includes solution architecture (C4, NFRs, ADRs), tenant admin console, observability stack, demo walkthrough, and **resume-ready bullets** for solution architect roles.
 
 ---
 
@@ -36,11 +25,13 @@ That README includes:
 cd LiveSync.PushPlatform
 docker compose up -d
 cd LiveSync.API/client && npm install && npm run build && cd ../..
-dotnet run --project LiveSync.PushPlatform/LiveSync.API
-dotnet run --project LiveSync.PushPlatform/LiveSync.Worker
+dotnet run --project LiveSync.API
+dotnet run --project LiveSync.Worker
 ```
 
 Open http://localhost:5252 — login: `admin@livesync.local` / `Admin123!`
+
+**Tenant admins:** use **Admin** in the header for users, audit, queue stats, and suspend/reactivate.
 
 ---
 
@@ -49,12 +40,13 @@ Open http://localhost:5252 — login: `admin@livesync.local` / `Admin123!`
 ```
 LiveSync/
 ├── LiveSync.PushPlatform/     ← Main solution (read README inside)
-│   ├── LiveSync.API/          ← REST + React SPA + SignalR
-│   ├── LiveSync.Worker/       ← Change queue processor
+│   ├── LiveSync.API/          ← REST + React SPA + SignalR + /metrics
+│   ├── LiveSync.Worker/       ← Change queue processor + /metrics
 │   ├── LiveSync.Domain/
 │   ├── LiveSync.Application/
 │   ├── LiveSync.Infrastructure/
 │   ├── docs/                  ← Architecture, walkthrough, ADRs
+│   ├── observability/         ← Prometheus, Grafana, OTLP (optional)
 │   └── docker-compose.yml
 └── .github/workflows/         ← CI
 ```

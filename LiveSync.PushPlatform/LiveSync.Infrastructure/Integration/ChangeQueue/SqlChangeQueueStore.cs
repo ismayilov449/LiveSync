@@ -1,4 +1,5 @@
 ﻿using LiveSync.Application.Configuration;
+using LiveSync.Application.Observability;
 using LiveSync.Application.RealTimeSync.Models;
 using LiveSync.Application.RealTimeSync.Ports;
 using LiveSync.Infrastructure.Persistence;
@@ -19,7 +20,8 @@ public sealed class SqlChangeQueueStore(
             Key = change.Key,
             Payload = change.Payload,
             Version = settings.Value.QueueVersion,
-            CreatedAt = change.CreatedAt ?? DateTimeOffset.UtcNow
+            CreatedAt = change.CreatedAt ?? DateTimeOffset.UtcNow,
+            Status = (int)ChangeQueueStatus.Pending
         });
 
         await db.SaveChangesAsync(ct);
@@ -31,6 +33,7 @@ public sealed class SqlChangeQueueStore(
         var claimToken = Guid.NewGuid().ToString("N");
         var now = DateTimeOffset.UtcNow;
         var staleBefore = now.AddSeconds(-settings.Value.ClaimStaleAfterSeconds);
+        var deadLetterStatus = (int)ChangeQueueStatus.DeadLetter;
 
         await db.ChangeQueue
             .Where(x => x.ProcessedAt == null && x.ClaimedAt != null && x.ClaimedAt < staleBefore)
@@ -45,6 +48,7 @@ public sealed class SqlChangeQueueStore(
                 WHERE Version = {version}
                   AND ProcessedAt IS NULL
                   AND ClaimedAt IS NULL
+                  AND Status <> {deadLetterStatus}
                   AND RetryCount < {maxRetries}
                 ORDER BY CreatedAt
                 OFFSET 0 ROWS FETCH NEXT {batchSize} ROWS ONLY
@@ -82,6 +86,7 @@ public sealed class SqlChangeQueueStore(
 
         db.ChangeQueue.Remove(row);
         await db.SaveChangesAsync(ct);
+        LiveSyncMetrics.ChangesProcessed.Add(1);
     }
 
     public async Task MarkFailedAsync(long queueEntryId, string error, CancellationToken ct = default)
@@ -96,8 +101,34 @@ public sealed class SqlChangeQueueStore(
         row.ClaimToken = null;
 
         if (row.RetryCount >= settings.Value.MaxRetries)
+        {
+            row.Status = (int)ChangeQueueStatus.DeadLetter;
             row.ProcessedAt = DateTimeOffset.UtcNow;
+            LiveSyncMetrics.ChangesDeadLettered.Add(1);
+        }
+        else
+        {
+            LiveSyncMetrics.ChangesFailed.Add(1);
+        }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<ChangeQueueStatistics> GetStatisticsAsync(string version, CancellationToken ct = default)
+    {
+        var deadLetterStatus = (int)ChangeQueueStatus.DeadLetter;
+
+        var pending = await db.ChangeQueue.CountAsync(
+            x => x.Version == version
+                 && x.ProcessedAt == null
+                 && x.Status != deadLetterStatus,
+            ct);
+
+        var deadLetter = await db.ChangeQueue.CountAsync(
+            x => x.Version == version && x.Status == deadLetterStatus,
+            ct);
+
+        LiveSyncMetrics.SetQueueDepth(pending, deadLetter);
+        return new ChangeQueueStatistics(pending, deadLetter);
     }
 }

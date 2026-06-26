@@ -9,7 +9,9 @@ using StackExchange.Redis;
 
 namespace LiveSync.Infrastructure.RealTimeSync;
 
-public sealed class RedisSubscriptionStore(IRedisConnectionFactory redis) : ISubscriptionStore
+public sealed class RedisSubscriptionStore(
+    IRedisConnectionFactory redis,
+    RedisResilienceExecutor resilience) : ISubscriptionStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -18,20 +20,23 @@ public sealed class RedisSubscriptionStore(IRedisConnectionFactory redis) : ISub
 
     public async Task AddAsync(SubscriptionDto subscription, CancellationToken ct = default)
     {
-        var db = redis.Database;
-        var json = JsonSerializer.Serialize(subscription, JsonOptions);
+        await resilience.ExecuteAsync(async token =>
+        {
+            var db = redis.Database;
+            var json = JsonSerializer.Serialize(subscription, JsonOptions);
 
-        await db.StringSetAsync(RedisKeyBuilder.Subscription(subscription.TenantId, subscription.Id), json);
-        await db.SetAddAsync(RedisKeyBuilder.ConnectionSubscriptions(subscription.TenantId, subscription.ConnectionId), subscription.Id);
-        await db.SetAddAsync(RedisKeyBuilder.TopicSubscriptions(subscription.TenantId, subscription.Topic.Hash), subscription.Id);
-        await db.SetAddAsync(
-            RedisKeyBuilder.BucketTopics(subscription.TenantId, subscription.Topic.Bucket),
-            TopicSerializer.Serialize(subscription.Topic));
+            await db.StringSetAsync(RedisKeyBuilder.Subscription(subscription.TenantId, subscription.Id), json);
+            await db.SetAddAsync(RedisKeyBuilder.ConnectionSubscriptions(subscription.TenantId, subscription.ConnectionId), subscription.Id);
+            await db.SetAddAsync(RedisKeyBuilder.TopicSubscriptions(subscription.TenantId, subscription.Topic.Hash), subscription.Id);
+            await db.SetAddAsync(
+                RedisKeyBuilder.BucketTopics(subscription.TenantId, subscription.Topic.Bucket),
+                TopicSerializer.Serialize(subscription.Topic));
 
-        await db.SortedSetAddAsync(
-            RedisKeyBuilder.SubscriptionRenewalIndex(),
-            RedisKeyBuilder.Subscription(subscription.TenantId, subscription.Id),
-            subscription.RenewedAtUtc.ToUnixTimeSeconds());
+            await db.SortedSetAddAsync(
+                RedisKeyBuilder.SubscriptionRenewalIndex(),
+                RedisKeyBuilder.Subscription(subscription.TenantId, subscription.Id),
+                subscription.RenewedAtUtc.ToUnixTimeSeconds());
+        }, ct);
     }
 
     public async Task RemoveAsync(string subscriptionId, int tenantId, CancellationToken ct = default)

@@ -92,10 +92,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthorization();
 app.UseMiddleware<TenantResolutionMiddleware>();
+app.UseMiddleware<TenantStatusMiddleware>();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapLiveSyncHealthChecks();
+app.MapLiveSyncObservabilityEndpoints();
 app.MapControllers();
 app.MapHub<PushHub>("/hubs/push");
 

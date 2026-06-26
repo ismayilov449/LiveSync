@@ -24,6 +24,7 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Item> Items => Set<Item>();
     public DbSet<ChangeQueueEntry> ChangeQueue => Set<ChangeQueueEntry>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

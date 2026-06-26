@@ -1,6 +1,8 @@
 using LiveSync.Application;
 using LiveSync.Infrastructure;
 using LiveSync.Infrastructure.Extensions;
+using LiveSync.Infrastructure.Observability;
+using OpenTelemetry.Metrics;
 using LiveSync.Infrastructure.Persistence;
 using LiveSync.Infrastructure.Persistence.ControlPlane;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -16,6 +18,8 @@ builder.Host.UseSerilog((context, _, configuration) => configuration
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
     .WriteTo.Console());
+
+builder.Services.AddLiveSyncOpenTelemetry(builder.Configuration, builder.Environment);
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration, options =>
@@ -64,5 +68,7 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
         await context.Response.WriteAsJsonAsync(new { status = "Alive" });
     }
 });
+
+app.MapPrometheusScrapingEndpoint("/metrics");
 
 app.Run();

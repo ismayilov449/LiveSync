@@ -90,26 +90,34 @@ function pushStatusLabel(status: PushConnectionStatus) {
 
 
 
-function pushStatusClass(status: PushConnectionStatus) {
-
+function pushStatusTone(status: PushConnectionStatus): 'live' | 'warn' | 'off' {
   switch (status) {
-
     case 'connected':
-
-      return 'badge-success';
-
+      return 'live';
     case 'connecting':
-
     case 'reconnecting':
-
-      return 'badge-warning';
-
+      return 'warn';
     default:
-
-      return 'badge-muted';
-
+      return 'off';
   }
+}
 
+function PushStatus({ status }: { status: PushConnectionStatus }) {
+  return (
+    <span className="status-pill" data-tone={pushStatusTone(status)}>
+      <span className="status-dot" aria-hidden />
+      signalr · {pushStatusLabel(status)}
+    </span>
+  );
+}
+
+function ItemStatus({ active }: { active: boolean }) {
+  return (
+    <span className="status-pill" data-tone={active ? 'live' : 'off'}>
+      <span className="status-dot" aria-hidden />
+      {active ? 'active' : 'inactive'}
+    </span>
+  );
 }
 
 
@@ -419,17 +427,9 @@ export function ItemsPage() {
             <h2>Items</h2>
 
             <p className="muted row-gap">
-
-              <span>Newest first</span>
-
-              <span className={`badge ${pushStatusClass(pushStatus)}`}>
-
-                SignalR: {pushStatusLabel(pushStatus)}
-
-              </span>
-
-              {refreshing ? <span>Syncing…</span> : null}
-
+              <span>newest first</span>
+              <PushStatus status={pushStatus} />
+              {refreshing ? <span className="mono">syncing…</span> : null}
             </p>
 
           </div>
@@ -594,22 +594,14 @@ export function ItemsPage() {
 
                   <tr key={item.id} className={!item.isActive ? 'inactive' : ''}>
 
-                    <td>{item.id}</td>
-
+                    <td className="mono tabular">{item.id}</td>
                     <td>{item.name}</td>
-
-                    <td>{item.parentId}</td>
+                    <td className="mono tabular">{item.parentId}</td>
 
                     <td>{formatCreatedAt(item.createdAtUtc)}</td>
 
                     <td>
-
-                      <span className={`badge ${item.isActive ? 'badge-success' : 'badge-muted'}`}>
-
-                        {item.isActive ? 'Active' : 'Inactive'}
-
-                      </span>
-
+                      <ItemStatus active={item.isActive} />
                     </td>
 
                     <td className="actions">

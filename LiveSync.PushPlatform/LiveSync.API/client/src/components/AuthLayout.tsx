@@ -14,7 +14,7 @@ export function AuthLayout({ title, subtitle, footer, children, onSubmit }: Auth
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <span className="brand-mark lg">LS</span>
+          <span className="brand-wordmark">livesync</span>
           <h1>{title}</h1>
           <p className="muted">{subtitle}</p>
         </div>

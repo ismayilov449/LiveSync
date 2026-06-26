@@ -19,7 +19,9 @@ public static class TenancyDependencyInjection
         services.AddMemoryCache();
 
         services.AddDbContext<MasterDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("ControlPlane")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("ControlPlane"),
+                sql => sql.EnableRetryOnFailure(maxRetryCount: 3)));
 
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<ITenantConnectionResolver, TenantConnectionResolver>();
