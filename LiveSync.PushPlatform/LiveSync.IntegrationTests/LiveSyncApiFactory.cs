@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Testcontainers.MsSql;
 using Testcontainers.Redis;
 
@@ -15,12 +16,14 @@ public class LiveSyncApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     private readonly MsSqlContainer _msSql = new MsSqlBuilder().Build();
     private readonly RedisContainer _redis = new RedisBuilder().Build();
+    private bool _containersStarted;
 
     public async Task InitializeAsync()
     {
         await _msSql.StartAsync();
         await _redis.StartAsync();
         await EnsureControlPlaneDatabaseAsync();
+        _containersStarted = true;
     }
 
     private async Task EnsureControlPlaneDatabaseAsync()
@@ -56,21 +59,34 @@ public class LiveSyncApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        if (!_containersStarted)
+        {
+            throw new InvalidOperationException(
+                "Integration test containers must be started before creating the test host.");
+        }
 
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            var controlPlaneConnectionString = BuildControlPlaneConnectionString();
-            var tenantConnectionTemplate = BuildTenantConnectionTemplate();
-
-            config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:ControlPlane"] = controlPlaneConnectionString,
-                ["ConnectionStrings:Redis"] = _redis.GetConnectionString(),
-                ["Tenancy:ConnectionTemplate"] = tenantConnectionTemplate,
-                ["Auth:Jwt:SecretKey"] = JwtSecretKey,
-                ["Hosting:ApplyMigrationsOnStartup"] = "true",
-            });
+            config.AddInMemoryCollection(BuildTestConfiguration());
         });
+
+        return base.CreateHost(builder);
+    }
+
+    protected virtual Dictionary<string, string?> BuildTestConfiguration()
+    {
+        return new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:ControlPlane"] = BuildControlPlaneConnectionString(),
+            ["ConnectionStrings:Redis"] = _redis.GetConnectionString(),
+            ["Tenancy:ConnectionTemplate"] = BuildTenantConnectionTemplate(),
+            ["Auth:Jwt:SecretKey"] = JwtSecretKey,
+            ["Hosting:ApplyMigrationsOnStartup"] = "true",
+        };
     }
 
     private string BuildControlPlaneConnectionString()
