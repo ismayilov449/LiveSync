@@ -13,16 +13,16 @@ public static class LiveSyncSignalR
     this IServiceCollection services,
     IConfiguration configuration)
     {
-        var redis = configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("Connection string 'Redis' is not configured.");
-
-        var redisOptions = ConfigurationOptions.Parse(redis);
-        redisOptions.ChannelPrefix = RedisChannel.Literal(RedisChannelPrefix);
-
         services.AddSignalR()
             .AddStackExchangeRedis(o =>
             {
-                o.Configuration = redisOptions;
+                // Read when options are built, not at registration, so configuration added later
+                // by the host (e.g. integration test containers) is honored.
+                var redis = configuration.GetConnectionString("Redis")
+                    ?? throw new InvalidOperationException("Connection string 'Redis' is not configured.");
+
+                o.Configuration = ConfigurationOptions.Parse(redis);
+                o.Configuration.ChannelPrefix = RedisChannel.Literal(RedisChannelPrefix);
             });
 
         return services;
