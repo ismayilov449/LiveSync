@@ -36,7 +36,7 @@ Open **http://localhost:5252** (or http://localhost:5173 if using Vite dev mode)
 5. Open **Account** — note roles (`TenantAdmin`), organization name, and tenant status.
 6. Open **Queues** — see the default **General** queue.
 
-![Tickets page — signalr · live](../assets/screenshot-tickets.png)
+![Tickets page — signalr · live](assets/screenshot-tickets.png)
 
 **What you're seeing:** JWT auth, tenant-scoped support desk data, SignalR subscription active, dark compact UI.
 
@@ -93,7 +93,7 @@ This is the headline demo. Use **two browser contexts** so sessions don't overwr
 
 **What you're seeing:** bucket-scoped SignalR groups ([ADR 005](adr/005-multi-bucket-real-time-sync.md)).
 
-![Real-time sync — two users, same tenant](../assets/demo-realtime-sync.gif)
+![Real-time sync — two users, same tenant](assets/demo-realtime-sync.gif)
 
 ---
 
@@ -129,7 +129,7 @@ The detail panel shows a hint for the next step (e.g. *"Click Resolve when the i
 
 Try assigning as member via API — `PUT /api/v1/tickets/{id}/assign` returns **403 Forbidden**.
 
-![Ticket workflow — assign → start → resolve → close](../assets/demo-ticket-workflow.gif)
+![Ticket workflow — assign → start → resolve → close](assets/demo-ticket-workflow.gif)
 
 ---
 
@@ -142,7 +142,7 @@ Try assigning as member via API — `PUT /api/v1/tickets/{id}/assign` returns **
 
 **What you're seeing:** database-per-tenant isolation + JWT `tenant_id` claim.
 
-![Tenant isolation — separate organizations](../assets/demo-tenant-isolation.gif)
+![Tenant isolation — separate organizations](assets/demo-tenant-isolation.gif)
 
 ---
 
@@ -156,7 +156,7 @@ As **TenantAdmin** in Tab A:
 2. See organization name, status, **queue pending**, and **dead letter** counts.
 3. Counts update when the Worker is running.
 
-![Admin overview — queue stats](../assets/demo-admin-console.png)
+![Admin overview — queue stats](assets/screenshot-admin-overview.png)
 
 ### Audit log
 

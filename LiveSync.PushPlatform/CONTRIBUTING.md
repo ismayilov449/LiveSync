@@ -20,7 +20,7 @@ Thanks for your interest in LiveSync!
 **Troubleshooting:** [docs/troubleshooting.md](docs/troubleshooting.md)  
 **Client patterns:** [docs/client-development.md](docs/client-development.md)  
 **Adding features:** [docs/extending-the-platform.md](docs/extending-the-platform.md)  
-**Demo assets:** `python scripts/capture-demo-assets.py` (regenerates GIFs/screenshots in `docs/assets/`)
+**Demo assets:** `python scripts/capture-demo-assets.py` (regenerates GIFs/screenshots in `docs/assets/`; see [docs/assets/README.md](docs/assets/README.md))
 
 ## Code standards
 
@@ -48,17 +48,17 @@ When you change… update these files:
 
 | Area | Files |
 |------|-------|
-| API endpoints | `README.md` API reference, `docs/architecture.md` |
-| Support Desk / new aggregates | `docs/extending-the-platform.md`, `docs/adr/006-support-desk-aggregates.md`, `docs/architecture.md`, `docs/glossary.md`, `README.md` |
+| API endpoints | Root [`README.md`](../README.md) API reference, `docs/architecture.md` |
+| Support Desk / new aggregates | `docs/extending-the-platform.md`, `docs/adr/006-support-desk-aggregates.md`, `docs/architecture.md`, `docs/glossary.md`, root `README.md` |
 | Tenancy / lifecycle | `docs/tenancy.md`, `docs/solution-architecture.md` |
 | Real-time / queue / buckets | `docs/real-time-sync.md`, ADR 003, ADR 004/005 |
 | Client / SPA / push UX | `docs/client-development.md`, `docs/demo-walkthrough.md` |
 | Demo steps | `docs/demo-walkthrough.md` |
-| UI routes | `README.md` Admin UI section, `docs/architecture.md`, `docs/demo-walkthrough.md` |
-| Observability | `README.md` Observability section, `docs/solution-architecture.md` |
+| UI routes | Root `README.md` Features section, `docs/architecture.md`, `docs/demo-walkthrough.md` |
+| Observability | Root `README.md` Observability section, `docs/solution-architecture.md` |
 | Setup / local dev pain | `docs/troubleshooting.md`, `scripts/dev.ps1` |
 | CV bullets | `docs/resume-bullets.md` |
-| New architecture decision | `docs/adr/NNN-title.md` + README design decisions table |
+| New architecture decision | `docs/adr/NNN-title.md` + root README *The approach* section |
 
 ## Secrets
 
