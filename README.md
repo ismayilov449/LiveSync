@@ -344,7 +344,7 @@ cd LiveSync.API/client && npm test         # 7 client tests (Vitest)
 
 Unit tests cover the transaction behavior (pushes go out only after commit, never after a rollback, and a failed push doesn't fail the request), command handlers, validators, filter evaluation and topic serialization.
 
-**CI** (GitHub Actions, every push and PR to `main`): client lint + Vitest + build → .NET build → vulnerable-package scan → unit tests → Docker image builds for the API and Worker.
+**CI** (GitHub Actions, every push and PR to `main`): client lint + Vitest + build → .NET build → vulnerable-package scan (fails on any known-vulnerable direct or transitive package) → unit tests → **integration tests against real SQL Server + Redis containers** → Docker image builds for the API and Worker.
 
 ---
 
@@ -465,9 +465,10 @@ Base path `/api/v1` (legacy aliases under `/api/...`).
 **Engineering notes (found and fixed while hardening the project)**
 
 - *The outbox wasn't atomic.* The change-queue row used to be saved in a separate `SaveChanges` after the ticket, so a crash in between lost the notification, and the instant push could go out before the outbox row existed. Fixed with `TransactionBehavior` and a post-commit push buffer, and pinned by an integration test that fails on the old code.
-- *The integration tests silently depended on a local Redis.* SignalR's Redis connection string was read at service registration, before the test host applied its configuration, so the push tests talked to `localhost:6379` instead of the Testcontainers Redis. Reading it lazily made the suite self-contained.
+- *The integration tests silently depended on a local Redis.* SignalR's Redis connection string was read at service registration, before the test host applied its configuration, so the push tests talked to `localhost:6379` instead of the Testcontainers Redis. Reading it lazily made the suite self-contained, and it now runs in CI.
+- *Supply-chain hygiene.* The CI vulnerability gate caught two high-severity transitive advisories (`Microsoft.OpenApi`, `SSH.NET` via Testcontainers); both were resolved by pinning or upgrading to patched versions.
 
-**Known limitations and next steps:** integration tests are not yet part of CI · no Kubernetes/IaC manifests · no cross-tenant super-admin console · email/webhook notifications, SLA timers per queue and k6 load tests are on the [backlog](LiveSync.PushPlatform/docs/solution-architecture.md#future-backlog-not-yet-implemented).
+**Known limitations and next steps:** no Kubernetes/IaC manifests · no cross-tenant super-admin console · email/webhook notifications, SLA timers per queue and k6 load tests are on the [backlog](LiveSync.PushPlatform/docs/solution-architecture.md#future-backlog-not-yet-implemented).
 
 ---
 

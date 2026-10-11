@@ -102,6 +102,10 @@ jobs:
 
         run: dotnet test LiveSync.PushPlatform/LiveSync.Tests/LiveSync.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage"
 
+      - name: Integration tests (Testcontainers SQL Server + Redis)
+
+        run: dotnet test LiveSync.PushPlatform/LiveSync.IntegrationTests/LiveSync.IntegrationTests.csproj --configuration Release --verbosity normal
+
 
 
       - name: Build Docker images
