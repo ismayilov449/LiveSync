@@ -65,7 +65,32 @@ Picture a support team of twelve agents working the same **Billing** queue.
 
 ### 1. Database-per-tenant, with a control plane
 
-Each organization gets its own database (`LiveSync_Tenant_{id}`), created and migrated automatically on registration. A separate **control plane** database stores identity, the tenant registry and the audit log. The JWT carries a `tenant_id` claim, middleware checks that the user belongs to that tenant, and the request's `DbContext` connects to that tenant's database only. Inside each database, EF Core global query filters and a save-time ownership check add a second layer of protection.
+Each organization gets its own database (`LiveSync_Tenant_{id}`), created and migrated automatically on registration. A separate **control plane** database stores identity, the tenant registry and the audit log. The JWT carries a `tenant_id` claim, middleware checks that the user belongs to that tenant, and the request's `DbContext` connects to that tenant's database only. Inside each database, explicit `TenantId` filters on every query and a save-time ownership check add a second layer of protection.
+
+**Signing up creates a new database**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant API as LiveSync.API
+    participant CP as Control-plane DB
+    participant T as New org DB
+    B->>API: POST /api/v1/auth/register
+    API->>CP: add org 3, status Provisioning
+    rect rgba(100,116,139,0.12)
+        API->>T: CREATE DATABASE LiveSync_Tenant_3
+        API->>T: apply migrations
+        API->>T: add General queue
+    end
+    API->>CP: mark org 3 Active
+    API->>CP: create admin user, role TenantAdmin
+    API-->>B: 200 OK with JWT
+    Note right of B: JWT holds tenant_id,<br/>user_id, role. Valid 8 h.
+    Note over API,T: Not one transaction. A failure midway can leave<br/>org 3 Provisioning, or Active with no admin.
+```
+
+Steps 3–5 build the org's own database on the spot; the control plane remembers which database belongs to which org, and the JWT tells every later request which org it is. Invited users (`POST /auth/users`, admin only) join an existing org as TenantUser, with no new database.
 
 **Trade-off:** more databases to migrate and more connection pools to manage, in exchange for hard isolation and per-customer backup and restore. → [ADR 001](LiveSync.PushPlatform/docs/adr/001-database-per-tenant.md)
 
@@ -73,24 +98,40 @@ Each organization gets its own database (`LiveSync_Tenant_{id}`), created and mi
 
 Ticket and queue commands carry a marker interface, `ITransactionalCommand`. A MediatR `TransactionBehavior` runs each such command inside a single database transaction, managed by EF Core's retrying execution strategy:
 
-```
-BEGIN TRANSACTION
-  handler saves the Ticket aggregate          (identity id generated)
-  domain event → Enqueue*Handler writes ChangeQueue row (Pending)
-COMMIT                                         ← both rows or neither
-→ buffered SignalR push sent (best-effort)
+```mermaid
+flowchart TB
+    REQ["Command arrives<br/>e.g. open ticket"] --> VAL["Validate input"]
+    VAL -- "invalid" --> BAD["400 Bad Request"]
+    VAL -- "valid" --> TX
+    subgraph TX["One database transaction"]
+        SAVE["Save ticket"] --> EVT["Event: ticket opened"]
+        EVT -- "Enqueue handler" --> OUT["Write outbox row<br/>ChangeQueue · Pending"]
+        EVT -- "Notify handler" --> HOLD["Hold push in memory"]
+        OUT --> OK{"Commit OK?"}
+        HOLD --> OK
+    end
+    OK -- "yes" --> PUSH["Send held push<br/>to browsers, best-effort"]
+    OK -- "no" --> RB["Roll back both rows<br/>drop held push"]
+
+    classDef host   fill:#8b5cf61f,stroke:#8b5cf6,stroke-width:1.5px
+    classDef store  fill:#f59e0b1f,stroke:#d97706,stroke-width:1.5px
+    classDef reject fill:#ef44441f,stroke:#dc2626,stroke-width:1.5px
+    class REQ,VAL,EVT,HOLD,PUSH host
+    class SAVE,OUT store
+    class BAD,RB reject
+    style TX fill:transparent,stroke:#64748b,stroke-dasharray:4 3
 ```
 
-If writing the outbox row fails, the ticket is rolled back as well. An integration test proves this by injecting a failing outbox store. The immediate push waits in `PostCommitNotifications` until the commit succeeds, and a failed push only logs a warning, because the outbox row guarantees the Worker will deliver the change. → [ADR 003](LiveSync.PushPlatform/docs/adr/003-change-queue-outbox.md)
+The ticket row and its outbox row are saved together or not at all; an integration test proves it by injecting a failing outbox store. The push waits in `PostCommitNotifications` until commit, and a failed push only logs a warning, because the Worker re-sends from the outbox row. On a transient SQL error, EF Core re-runs everything in the dashed box. The audit entry and idempotency key are written after commit, outside the transaction. → [ADR 003](LiveSync.PushPlatform/docs/adr/003-change-queue-outbox.md)
 
 ### 3. Two delivery paths, on purpose
 
 | Path | Latency | Guarantee | Role |
 |---|---|---|---|
-| **API, post-commit push** | milliseconds | best-effort | Makes the UI feel instant |
-| **Worker, outbox processing** | ~1 s poll | at-least-once, retries, then **dead-letter** | Reliability, Redis cache consistency, filtered subscriptions |
+| **A · API, post-commit push** | milliseconds | best-effort | Makes the UI feel instant |
+| **B · Worker, outbox processing** | ~1 s poll | at-least-once, retries, then **dead-letter** | Reliability, Redis topic-cache consistency |
 
-The Worker claims batches with `UPDLOCK, READPAST` row locks and a per-tenant Redis distributed lock, so several Worker replicas can run safely. After `MaxRetries` (default 5) a change moves to **DeadLetter**, which the admin console and Prometheus both show. → [ADR 002](LiveSync.PushPlatform/docs/adr/002-api-worker-split.md)
+Before claiming a batch for an org, the Worker takes a per-org Redis lock; that lock, not the `UPDLOCK, READPAST` hints on the claim query, is what keeps several Worker replicas apart. After `MaxRetries` (default 5) a change moves to **DeadLetter**, which the admin console and Prometheus both show. → [ADR 002](LiveSync.PushPlatform/docs/adr/002-api-worker-split.md)
 
 ### 4. Bucket-scoped SignalR groups
 
@@ -98,7 +139,7 @@ On `FindAndSubscribe`, a connection joins `tenant:{tenantId}:bucket:{ticket|queu
 
 ### 5. Rich domain model, not CRUD
 
-`Ticket` is an aggregate root that owns its `TicketComment` entities and enforces its lifecycle. Invalid transitions throw from the domain and surface as RFC 7807 errors. `Queue` is a separate aggregate that cannot be deactivated while it still has open tickets. → [ADR 006](LiveSync.PushPlatform/docs/adr/006-support-desk-aggregates.md)
+`Ticket` is an aggregate root that owns its `TicketComment` entities and enforces its lifecycle. Invalid transitions throw from the domain and surface as RFC 7807 errors. `Queue` is a separate aggregate; the deactivate command handler refuses while the queue still has tickets that are not Closed. → [ADR 006](LiveSync.PushPlatform/docs/adr/006-support-desk-aggregates.md)
 
 ---
 
@@ -107,104 +148,234 @@ On `FindAndSubscribe`, a connection joins `tenant:{tenantId}:bucket:{ticket|queu
 ### System architecture
 
 ```mermaid
-flowchart LR
-    subgraph Browser["Browsers"]
-        SPA["React SPA<br/>SignalR client"]
-    end
+flowchart TB
+    SPA["React SPA<br/>in the browser"]
+    API["LiveSync.API<br/>REST · SignalR hub"]
+    WRK["LiveSync.Worker<br/>outbox processor"]
+    CP[("Control-plane DB<br/>orgs · users · audit")]
+    TDB[("Org databases<br/>one per org")]
+    RDS[("Redis<br/>backplane · locks")]
 
-    subgraph Hosts["LiveSync processes"]
-        API["LiveSync.API<br/>REST · JWT · SignalR hub<br/>post-commit push"]
-        WRK["LiveSync.Worker<br/>outbox processor<br/>dead-letter · expiry"]
-    end
+    SPA -- "REST + JWT" --> API
+    API -. "live pushes · WebSocket" .-> SPA
+    API -- "sign-in · org lookup · audit" --> CP
+    API -- "data + outbox row" --> TDB
+    RDS <-. "pushes · subscriptions" .-> API
+    WRK -. "publish pushes" .-> RDS
+    WRK -- "poll outbox · 1 s" --> TDB
 
-    subgraph Data["Data"]
-        CP[("Control plane DB<br/>users · tenants · audit")]
-        T1[("Tenant DB · Acme<br/>tickets · queues · outbox")]
-        T2[("Tenant DB · Globex<br/>tickets · queues · outbox")]
-        RD[("Redis<br/>subscriptions · cache<br/>SignalR backplane")]
-    end
-
-    SPA -- "HTTPS /api/v1" --> API
-    SPA <-. "WSS /hubs/push" .-> API
-    API --> CP
-    API --> T1
-    API --> T2
-    API <--> RD
-    WRK -- "claim batches" --> T1
-    WRK -- "claim batches" --> T2
-    WRK --> CP
-    WRK -- "push via backplane" --> RD
+    classDef client fill:#3b82f61f,stroke:#3b82f6,stroke-width:1.5px
+    classDef host   fill:#8b5cf61f,stroke:#8b5cf6,stroke-width:1.5px
+    classDef store  fill:#f59e0b1f,stroke:#d97706,stroke-width:1.5px
+    class SPA client
+    class API,WRK host
+    class CP,TDB,RDS store
 ```
+
+Solid arrows are requests, dashed arrows are pushes. The API serves the SPA and the REST API and holds every browser's WebSocket. The Worker never talks to browsers: it polls each org's outbox, publishes through Redis, and the API delivers. On every tick it also reads the list of Active orgs from the control plane. *org = tenant.*
 
 ### Life of a change: opening a ticket
 
 ```mermaid
+---
+config:
+  sequence:
+    actorMargin: 24
+    width: 120
+---
 sequenceDiagram
     autonumber
-    participant S as Sarah's browser
+    participant S as Sarah's tab
+    participant M as Marcus's tab
     participant API as LiveSync.API
-    participant DB as Tenant DB
-    participant Hub as SignalR (Redis backplane)
-    participant M as Marcus's browser
+    participant DB as Org 2 DB
+    participant R as Redis
     participant W as LiveSync.Worker
-
-    S->>API: POST /api/v1/tickets
-    rect rgba(52, 211, 153, 0.12)
-        Note over API,DB: One transaction (TransactionBehavior)
-        API->>DB: INSERT Ticket
-        API->>DB: INSERT ChangeQueue (Pending)
+    Note over S,M: both tabs are in group<br/>tenant:2:bucket:ticket
+    S->>API: POST /tickets
+    rect rgba(16,185,129,0.10)
+        Note over API,DB: One transaction
+        API->>DB: INSERT Ticket 7
+        Note over API,DB: TicketOpened event:<br/>add outbox row,<br/>hold the push
+        API->>DB: INSERT outbox row
         API->>DB: COMMIT
     end
-    API->>Hub: PushUpdate → tenant:2:bucket:ticket
-    Hub-->>M: PushUpdate {ticket-7, upsert}
-    M->>API: GET /api/v1/tickets/7
-    Note over M: patch one row + flash ⚡
-    API-->>S: 201 Created
-
-    loop every ~1 s
-        W->>DB: claim Pending batch (UPDLOCK, READPAST)
-        W->>Hub: refresh Redis topic cache + PushUpdate
-        W->>DB: delete processed row (or retry → DeadLetter)
+    rect rgba(59,130,246,0.10)
+        Note over S,API: Path A · instant, best-effort
+        API-->>M: PushUpdate ticket-7
+        API-->>S: 201 Created
+        M->>API: GET /tickets/7
+        Note over M: patch row, flash,<br/>refresh open panel
+    end
+    rect rgba(245,158,11,0.12)
+        Note over API,W: Path B · reliable, about 1 s later
+        W->>R: lock org 2
+        W->>DB: claim Pending rows
+        W-->>R: publish PushUpdate<br/>with ticket data
+        R-->>API: backplane delivery
+        API-->>M: PushUpdate again
+        W->>DB: delete outbox row
+        Note over DB,W: on error RetryCount+1,<br/>DeadLetter after 5
     end
 ```
+
+Path A makes the UI feel instant but can fail silently. Path B re-delivers from the outbox row at least once, so clients treat every push as "refetch this one row": after step 12 Marcus simply fetches ticket 7 again. Sarah's tab gets the same pushes; the flash marks only changes from other sessions. Both paths travel over the SignalR Redis backplane; Path A draws it as one hop.
+
+Every other command follows this exact path; only the event and the push operation differ:
+
+| Command | Domain event | Push |
+|---|---|---|
+| Open ticket | `TicketOpened` | upsert |
+| Assign ticket | `TicketAssigned` | upsert |
+| Add comment | `TicketCommentAdded` | upsert |
+| Start progress, resolve, close | `TicketStatusChanged` | upsert |
+| Delete ticket | `TicketDeleted` | delete |
+| Create queue | `QueueCreated` | upsert |
+| Rename or deactivate queue | `QueueUpdated` | upsert (the Worker sends delete for a deactivated queue) |
+| Delete queue | `QueueDeleted` | delete |
+
+### What happens to an outbox row
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Pending : API commit
+    Pending --> Claimed : Worker claims<br/>up to 50
+    Claimed --> [*] : pushed<br/>row deleted
+    Claimed --> Pending : failed, or claim<br/>older than 5 min
+    Claimed --> DeadLetter : 5th failure
+    state "Pending" as Pending
+    state "Claimed by Worker" as Claimed
+    state "Dead letter" as DeadLetter
+    Pending : Status = Pending
+    Claimed : ClaimedAt set
+    DeadLetter : Status = DeadLetter
+    DeadLetter : kept, never replayed
+    classDef dead fill:#ef44441f,stroke:#dc2626
+    class DeadLetter dead
+```
+
+The `Status` column only has Pending and DeadLetter; "claimed" means `ClaimedAt` is set. Success deletes the row, so a healthy outbox is nearly empty. A failure adds 1 to `RetryCount` and the row is retried on the next tick, with no backoff; a claim older than 5 min (the Worker crashed) is released too. Dead letters are counted on the Admin overview and `/metrics`; no endpoint replays them.
+
+**One Worker tick, every 1 s**
+
+1. Read the Active org ids from the control plane; suspended orgs are skipped.
+2. For each org in turn, take the Redis lock `lock:livesync-change-detection:tenant:{id}` for 30 s. If another Worker holds it, skip that org: this lock is what keeps replicas apart.
+3. Release stale claims, then claim up to 50 of the oldest Pending rows with fewer than 5 retries.
+4. For each row: renew the lock, load the ticket or queue, update the Redis topic caches, push to `tenant:{id}:bucket:{bucket}`, then delete the row or record the failure.
+5. Separately: depth gauges every 15 s; subscriptions not renewed for 300 s are removed every 60 s.
 
 ### Tenant isolation, layer by layer
 
+```mermaid
+flowchart TB
+    subgraph IN["Ways in"]
+        HTTP["REST call<br/>Bearer JWT"]
+        WS["Hub connect<br/>access_token=JWT"]
+        WK["Worker tick<br/>active org from registry"]
+    end
+    REJ["Rejected<br/>401 or 403"]
+    subgraph MW["API middleware"]
+        G1("JWT valid?")
+        G2("User in org 2?<br/>control-plane check")
+        G3("Org suspended?")
+    end
+    GRP("Join group<br/>tenant:2:bucket:ticket")
+    subgraph DA["Data access"]
+        G4("Connection<br/>org 2 → LiveSync_Tenant_2")
+        G5("Reads filter<br/>TenantId = 2")
+        G6("Writes checked<br/>TenantId must be 2")
+    end
+    DB[("LiveSync_Tenant_2")]
+
+    HTTP --> G1
+    WS --> G1
+    G1 -- "valid" --> G2
+    G2 -- "member" --> G3
+    G3 -- "active · REST" --> G4
+    G3 -- "active · hub" --> GRP
+    WK -- "one org per scope" --> G4
+    G4 -- "read" --> G5
+    G4 -- "write" --> G6
+    G5 --> DB
+    G6 --> DB
+    G1 -. "401" .-> REJ
+    G2 -. "401" .-> REJ
+    G3 -. "403" .-> REJ
+
+    classDef client fill:#3b82f61f,stroke:#3b82f6,stroke-width:1.5px
+    classDef host   fill:#8b5cf61f,stroke:#8b5cf6,stroke-width:1.5px
+    classDef store  fill:#f59e0b1f,stroke:#d97706,stroke-width:1.5px
+    classDef guard  fill:#10b9811f,stroke:#059669,stroke-width:1.5px
+    classDef reject fill:#ef44441f,stroke:#dc2626,stroke-width:1.5px
+    class HTTP,WS client
+    class WK host
+    class G1,G2,G3,GRP,G4,G5,G6 guard
+    class DB store
+    class REJ reject
+    style IN fill:transparent,stroke:#64748b,stroke-dasharray:4 3
+    style MW fill:transparent,stroke:#64748b,stroke-dasharray:4 3
+    style DA fill:transparent,stroke:#64748b,stroke-dasharray:4 3
 ```
-LiveSync_ControlPlane        LiveSync_Tenant_2 (Acme)      LiveSync_Tenant_3 (Globex)
-├── Tenants                  ├── Queues                    ├── Queues
-├── AspNetUsers (TenantId)   ├── Tickets                   ├── Tickets
-├── AspNetRoles              ├── TicketComments            ├── TicketComments
-└── AuditEvents              ├── ChangeQueue   ← outbox    ├── ChangeQueue
-                             └── IdempotencyRecords        └── IdempotencyRecords
-```
+
+The token says which org; the control plane confirms the user belongs to it; then the request gets a connection to that org's database only, with every query and save re-checking the org id. The Worker has no token, so it pins each unit of work to one org from the registry.
 
 | Layer | Guard |
 |---|---|
-| Token | JWT `tenant_id` claim, validated signature |
-| Middleware | `TenantResolutionMiddleware` checks membership; `TenantStatusMiddleware` returns 403 for suspended tenants |
+| Token | JWT signature, issuer, audience and lifetime are validated; the `tenant_id` claim names the org |
+| Middleware | `TenantResolutionMiddleware` checks membership (401 if the user isn't in that tenant); `TenantStatusMiddleware` returns 403 for suspended tenants |
 | Connection | `AppDbContext` resolves the connection string for the active tenant only |
-| Query | EF Core global query filters on `Ticket` and `Queue` |
+| Query | Every repository and query handler filters on `TenantId` explicitly |
 | Write | `AppDbContext.SaveChanges` rejects entities whose `TenantId` doesn't match the active tenant |
-| Real-time | SignalR group names include the tenant ID; the hub derives it from the token, never from the client |
+| Real-time | SignalR group names include the tenant ID; the hub derives it from the token, never from the client. Subscription and cache keys in Redis carry the tenant ID |
+| Worker | One DI scope, one tenant context and one Redis lock per org; only Active orgs are processed |
+
+<sub>Full middleware order: logging → correlation id → ProblemDetails errors → optional API key → CORS → rate limiter → JWT auth → role check → org membership → org status → endpoints.</sub>
+
+| Store | Holds |
+|---|---|
+| `LiveSync_ControlPlane` | Tenants (name, `DatabaseName`, status), `AspNetUsers` with `TenantId`, roles, `AuditEvents` |
+| `LiveSync_Tenant_{id}` | Queues, Tickets, TicketComments, ChangeQueue (outbox), IdempotencyRecords |
+| Redis (shared) | Subscriptions and topic caches (keys carry the tenant ID), per-org Worker locks, SignalR backplane channels |
 
 <img src="LiveSync.PushPlatform/docs/assets/demo-tenant-isolation.gif" alt="A new organization, Globex Corp, registers live and gets its own database; a ticket opened in Acme never appears for Globex" width="100%"/>
 
 ### Clean Architecture layering
 
 ```mermaid
-flowchart LR
-    D["Domain<br/>aggregates · events · invariants"] --> A["Application<br/>CQRS handlers · pipeline behaviors · ports"]
-    A --> I["Infrastructure<br/>EF Core · Redis · SignalR · tenancy"]
-    I --> H["Hosts<br/>API · Worker"]
+flowchart TB
+    subgraph HOSTS["Hosts"]
+        direction TB
+        API["LiveSync.API<br/>controllers · middleware"]
+        WRK["LiveSync.Worker<br/>startup wiring only"]
+    end
+    INF["Infrastructure<br/>EF Core · Redis · SignalR"]
+    APP["Application<br/>CQRS · ports · PushHub"]
+    DOM["Domain<br/>Ticket · Queue · events"]
+    HOSTS --> INF
+    HOSTS --> APP
+    INF -- "implements ports" --> APP
+    INF -- "implements repositories" --> DOM
+    APP --> DOM
+
+    classDef host   fill:#8b5cf61f,stroke:#8b5cf6,stroke-width:1.5px
+    classDef store  fill:#f59e0b1f,stroke:#d97706,stroke-width:1.5px
+    classDef guard  fill:#10b9811f,stroke:#059669,stroke-width:1.5px
+    class API,WRK,APP host
+    class INF store
+    class DOM guard
+    style HOSTS fill:transparent,stroke:#64748b,stroke-dasharray:4 3
 ```
 
-| Layer | Examples |
+Arrows mean "depends on", and both hosts reference Infrastructure and Application. Everything points toward Domain; Infrastructure plugs into interfaces declared by Application and Domain, and the two hosts wire it together.
+
+| Project | Contents |
 |---|---|
-| **Domain** | `Ticket` (+ `TicketComment`), `Queue`, domain events, status machine |
-| **Application** | `OpenTicketCommandHandler`, `TransactionBehavior`, `ValidationBehavior`, `SubscriptionManager`, `ChangeProcessor` |
-| **Infrastructure** | `EfTransactionRunner`, `SqlChangeQueueStore`, `RedisSubscriptionStore`, `SignalRRealTimeNotifier`, `TenantProvisioner` |
-| **Hosts** | API: controllers, middleware, SPA, hub. Worker: change detection, queue metrics, subscription expiry |
+| **Domain** | `Ticket` (+ `TicketComment`), `Queue`, domain events, repository interfaces |
+| **Application** | Command handlers such as `OpenTicketCommandHandler`, `ValidationBehavior`, `TransactionBehavior`, ports, `SubscriptionManager`, `ChangeProcessor`, `PushHub` |
+| **Infrastructure** | `EfTransactionRunner`, `SqlChangeQueueStore`, `RedisSubscriptionStore`, `SignalRRealTimeNotifier`, `TenantProvisioner`, the three hosted services (change detection, queue metrics, subscription expiry) |
+| **API** | Controllers, middleware, JWT issuing, SPA files; maps `/hubs/push` |
+| **Worker** | `Program.cs` that turns on the hosted services, plus `/health` and `/metrics` |
 
 ---
 
@@ -220,14 +391,28 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> New: open
-    New --> Assigned: assign (admin)
-    Assigned --> InProgress: start progress
-    InProgress --> Resolved: resolve
-    Resolved --> Closed: close
-    Closed --> [*]
-    note right of Closed: no comments or changes after close
+    [*] --> New : open
+    New --> Assigned : assign<br/>admin only
+    Assigned --> InProgress : start<br/>needs assignee
+    InProgress --> Resolved : resolve
+    Resolved --> Closed : close
+    state "In progress" as InProgress
+    state "Closed" as Closed
+    Closed : final, no reopen
+    Closed : admin can still delete
 ```
+
+Moves not marked "admin only" are open to any signed-in member of the org. The `Ticket` aggregate enforces the rules; the API enforces the roles. Invalid moves return 409; there is no reopen and no unassign.
+
+| Action | Who | Allowed from | Result |
+|---|---|---|---|
+| open | anyone | — | New |
+| assign | TenantAdmin | any state except Closed | New → Assigned; in other states the status stays (reassign) |
+| comment | anyone | any state except Closed | status unchanged |
+| start progress | anyone | Assigned (an assignee must be set) | In progress |
+| resolve | anyone | In progress | Resolved |
+| close | anyone | Resolved | Closed |
+| delete | TenantAdmin | any state, including Closed | hard delete; its comments go with it |
 
 - **Comments** live inside the ticket aggregate; there is no standalone Comments API.
 - **Live UX:** a `signalr · live` status pill, rows patched in place, a ⚡ marker on rows changed by *someone else*, and the open detail panel refreshing when its ticket changes.
