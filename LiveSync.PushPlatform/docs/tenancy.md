@@ -1,6 +1,6 @@
 # Multi-tenancy
 
-![Tenant isolation — separate databases per organization](../assets/demo-tenant-isolation.gif)
+![Tenant isolation — separate databases per organization](assets/demo-tenant-isolation.gif)
 
 ## Model
 

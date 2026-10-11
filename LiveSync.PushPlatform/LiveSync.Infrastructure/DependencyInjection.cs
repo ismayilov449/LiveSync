@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IQueueRepository, QueueRepository>();
         services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<ITransactionRunner, EfTransactionRunner>();
         services.AddScoped<IDomainEventDispatcher, MediatRDomainEventDispatcher>();
 
         services.AddScoped<IChangeQueueStore, SqlChangeQueueStore>();

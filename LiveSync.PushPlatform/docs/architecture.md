@@ -6,7 +6,7 @@ LiveSync is a **multi-tenant support desk** where each organization (tenant) rec
 
 The business domain is **Support Desk**: agents collaborate on **tickets** organized into **queues**, with real-time sync when anyone opens, comments on, assigns, or advances ticket status.
 
-![Tickets UI — live sync and detail panel](../assets/screenshot-tickets.png)
+![Tickets UI — live sync and detail panel](assets/screenshot-tickets.png)
 
 ## Components
 
@@ -65,11 +65,13 @@ Details: [adr/006-support-desk-aggregates.md](adr/006-support-desk-aggregates.md
 ```
 Client POST /api/v1/tickets or /api/v1/queues
   [optional Idempotency-Key on ticket open]
-  → Command handler (MediatR)
-  → Aggregate saved to tenant DB
-  → Domain event
-  → API: NotifyTenant*DomainEventHandler → SignalR PushUpdate (immediate, bucket-scoped)
-  → Enqueued in ChangeQueue (Pending)
+  → TransactionBehavior opens a tenant DB transaction
+    → Command handler (MediatR) saves the aggregate
+    → Domain event
+    → Enqueue*DomainEventHandler writes ChangeQueue row (Pending) — same transaction
+    → NotifyTenant*DomainEventHandler buffers the immediate push
+  → Commit (aggregate + ChangeQueue row are atomic)
+  → API: buffered SignalR PushUpdate (immediate, bucket-scoped, best-effort)
   → AuditService records action
   → Worker picks up change
   → *ChangeHandler updates Redis + SignalR PushUpdate (consistency)

@@ -14,8 +14,9 @@ public class LiveSyncApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private const string ControlPlaneDatabase = "LiveSync_ControlPlane";
     private const string JwtSecretKey = "integration-test-secret-key-min-32-chars";
 
-    private readonly MsSqlContainer _msSql = new MsSqlBuilder().Build();
-    private readonly RedisContainer _redis = new RedisBuilder().Build();
+    // Same images as docker-compose.yml so tests run against the dev stack's versions.
+    private readonly MsSqlContainer _msSql = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+    private readonly RedisContainer _redis = new RedisBuilder("redis:7-alpine").Build();
     private bool _containersStarted;
 
     public async Task InitializeAsync()

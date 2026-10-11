@@ -2,13 +2,13 @@
 
 How LiveSync keeps multiple browser tabs (and users) in sync within the same tenant — **per data bucket** (Tickets vs Queues).
 
-![Real-time sync — admin and member tabs](../assets/demo-realtime-sync.gif)
+![Real-time sync — admin and member tabs](assets/demo-realtime-sync.gif)
 
 ## Two notification paths (by design)
 
 | Path | When | Purpose |
 |------|------|---------|
-| **API immediate push** | Right after save in API | Fast UI update for subscribers of that bucket |
+| **API immediate push** | Right after the transaction commits | Fast UI update for subscribers of that bucket (best-effort) |
 | **Worker queue processing** | Polls `ChangeQueue` every ~1s | Redis topic cache, filtered subscriptions, consistency |
 
 Both send `PushUpdate` to SignalR group `tenant:{tenantId}:bucket:{ticket|queue}`.
@@ -43,14 +43,16 @@ sequenceDiagram
     participant Hub as SignalR Hub
 
     TabA->>API: POST /api/v1/tickets
-    API->>DB: INSERT Ticket + SaveChanges
+    Note over API,Q: One transaction (TransactionBehavior)
+    API->>DB: INSERT Ticket
     API->>API: TicketOpenedDomainEvent
-    Note over API,Hub: Immediate path (bucket: ticket)
+    API->>Q: INSERT change envelope (Pending)
+    API->>DB: COMMIT
+    Note over API,Hub: Immediate path, after commit (bucket: ticket)
     API->>Hub: NotifyBucketAsync(tenant, Ticket)
     Hub->>TabA: PushUpdate
     Hub->>TabB: PushUpdate
     Note over TabC: No push — different bucket
-    API->>Q: Enqueue change envelope (Pending)
     TabA->>API: GET /api/v1/tickets/{id} (row patch)
     TabB->>API: GET /api/v1/tickets/{id} (row patch)
 

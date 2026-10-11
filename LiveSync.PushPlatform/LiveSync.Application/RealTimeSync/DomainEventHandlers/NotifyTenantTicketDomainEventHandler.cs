@@ -1,6 +1,6 @@
 using LiveSync.Application.RealTimeSync.Contracts;
 using LiveSync.Application.RealTimeSync.Enums;
-using LiveSync.Application.RealTimeSync.Ports;
+using LiveSync.Application.RealTimeSync.Services;
 using LiveSync.Domain.Entities.TicketAggregate.Events;
 using LiveSync.Domain.Enums;
 using LiveSync.Domain.ValueObjects;
@@ -8,7 +8,7 @@ using MediatR;
 
 namespace LiveSync.Application.RealTimeSync.DomainEventHandlers;
 
-public sealed class NotifyTenantTicketDomainEventHandler(IRealTimeNotifier notifier)
+public sealed class NotifyTenantTicketDomainEventHandler(PostCommitNotifications notifications)
     : INotificationHandler<TicketOpenedDomainEvent>,
         INotificationHandler<TicketAssignedDomainEvent>,
         INotificationHandler<TicketCommentAddedDomainEvent>,
@@ -47,6 +47,7 @@ public sealed class NotifyTenantTicketDomainEventHandler(IRealTimeNotifier notif
             }
         };
 
-        return notifier.NotifyBucketAsync(tenantId, TopicBucket.Ticket, payload, ct);
+        notifications.Add(tenantId, TopicBucket.Ticket, payload);
+        return Task.CompletedTask;
     }
 }

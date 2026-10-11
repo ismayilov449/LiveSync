@@ -9,4 +9,4 @@ public sealed record OpenTicketCommand(
     string Subject,
     string Description,
     TicketPriority Priority,
-    int ReporterUserId) : ICommand<int>;
+    int ReporterUserId) : ICommand<int>, ITransactionalCommand;
