@@ -16,13 +16,13 @@ Checklist for adding a new domain aggregate (e.g. **Queues** and **Tickets** wer
 
 | Step | Location |
 |------|----------|
-| Commands + handlers | `CQRS/{Names}/Commands/` |
+| Commands + handlers | `CQRS/{Names}/Commands/` — mark state-changing commands `ITransactionalCommand` so the aggregate and its ChangeQueue rows commit together |
 | Queries + handlers | `CQRS/{Names}/Queries/` |
 | FluentValidation | `CQRS/{Names}/Validators/` |
 | DTOs | `CQRS/{Names}/Models/` |
 | Cross-aggregate validators | e.g. `ITicketQueueValidator` |
 | Enqueue domain events | `RealTimeSync/DomainEventHandlers/Enqueue{Name}*DomainEventHandler.cs` |
-| Immediate API notify | `RealTimeSync/DomainEventHandlers/NotifyTenant{Name}DomainEventHandler.cs` |
+| Immediate API notify | `RealTimeSync/DomainEventHandlers/NotifyTenant{Name}DomainEventHandler.cs` (adds to `PostCommitNotifications`; sent after commit) |
 | Worker change handler | `RealTimeSync/Handlers/{Name}ChangeHandler.cs` |
 | Cache DTO | `RealTimeSync/ReadModels/{Name}CacheDto.cs` |
 | Add `TopicBucket` value | `Domain/Enums/TopicBucket.cs` (Domain project) |

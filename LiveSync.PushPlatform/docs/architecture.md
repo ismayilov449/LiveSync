@@ -65,11 +65,13 @@ Details: [adr/006-support-desk-aggregates.md](adr/006-support-desk-aggregates.md
 ```
 Client POST /api/v1/tickets or /api/v1/queues
   [optional Idempotency-Key on ticket open]
-  → Command handler (MediatR)
-  → Aggregate saved to tenant DB
-  → Domain event
-  → API: NotifyTenant*DomainEventHandler → SignalR PushUpdate (immediate, bucket-scoped)
-  → Enqueued in ChangeQueue (Pending)
+  → TransactionBehavior opens a tenant DB transaction
+    → Command handler (MediatR) saves the aggregate
+    → Domain event
+    → Enqueue*DomainEventHandler writes ChangeQueue row (Pending) — same transaction
+    → NotifyTenant*DomainEventHandler buffers the immediate push
+  → Commit (aggregate + ChangeQueue row are atomic)
+  → API: buffered SignalR PushUpdate (immediate, bucket-scoped, best-effort)
   → AuditService records action
   → Worker picks up change
   → *ChangeHandler updates Redis + SignalR PushUpdate (consistency)
